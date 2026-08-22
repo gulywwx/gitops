@@ -23,5 +23,8 @@ https://github.com/ravdy/zen-pharma-backend
 
 ### change
 
+merge into one repo
+install argo, other components through terraform
+
 
 ### setup
