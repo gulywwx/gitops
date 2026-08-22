@@ -1,7 +1,7 @@
 # infra — Implementation Guide
 
 
-This guide walks you through setting up the pharma infrastructure on your own AWS account from scratch using this repository. Follow each section in order.
+This guide walks you through setting up the pharmacy infrastructure on your own AWS account from scratch using this repository. Follow each section in order.
 
 ---
 
@@ -27,7 +27,7 @@ This guide walks you through setting up the pharma infrastructure on your own AW
 
 ## 1. Architecture Overview
 
-This repository provisions a complete Kubernetes-based platform on AWS for the pharmacy
+This repository provisions a complete Kubernetes-based platform on AWS for the pharmacycy
 application. All infrastructure is defined as code in Terraform and deployed automatically
 via GitHub Actions — no manual AWS console clicks required after initial setup.
 
@@ -39,7 +39,7 @@ via GitHub Actions — no manual AWS console clicks required after initial setup
 AWS Account (us-east-1)
 │
 ├── S3 Bucket  (created manually — state backend for Terraform)
-│   └── pharmacy-terraform-state-<your-username>
+│   └── pharmacycy-terraform-state-<your-username>
 │       ├── envs/dev/terraform.tfstate
 │       ├── envs/qa/terraform.tfstate
 │       └── envs/prod/terraform.tfstate
@@ -52,7 +52,7 @@ AWS Account (us-east-1)
 │   └── Private RDS Subnets   10.0.5.0/24  (us-east-1a)  ]  RDS PostgreSQL
 │                             10.0.6.0/24  (us-east-1b)  ]  (private)
 │
-├── EKS Cluster  (pharma-dev-cluster, Kubernetes 1.33)
+├── EKS Cluster  (pharmacy-dev-cluster, Kubernetes 1.33)
 │   ├── Managed Node Group
 │   │   ├── Instance type : t3.small
 │   │   ├── Desired       : 3 nodes
@@ -61,12 +61,12 @@ AWS Account (us-east-1)
 │   └── OIDC Provider
 │       └── Enables IRSA — pods assume IAM roles without static credentials
 │
-├── RDS PostgreSQL  (pharma-dev-postgres)
+├── RDS PostgreSQL  (pharmacy-dev-postgres)
 │   ├── Engine        : PostgreSQL 15.7
 │   ├── Instance      : db.t3.micro
 │   ├── Storage       : 20 GB gp2, encrypted
 │   ├── Access        : private subnet only, port 5432 from EKS SG only
-│   └── DB name       : pharmadb  /  Master user: pharmaadmin
+│   └── DB name       : pharmacydb  /  Master user: pharmacyadmin
 │
 ├── ECR Repositories  (8 repos, one per service)
 │   ├── api-gateway               (Spring Cloud Gateway, port 8080)
@@ -76,7 +76,7 @@ AWS Account (us-east-1)
 │   ├── supplier-service          (vendor management, port 8084)
 │   ├── manufacturing-service     (batch tracking, port 8085)
 │   ├── notification-service      (Node.js, port 3000)
-│   └── pharma-ui                 (React frontend, port 80)
+│   └── pharmacy-ui                 (React frontend, port 80)
 │   │
 │   └── Each repo has:
 │       ├── scan_on_push = true   (automatic CVE scan on every push)
@@ -86,22 +86,22 @@ AWS Account (us-east-1)
 │   ├── EKS Cluster Role          (allows EKS control plane to manage AWS resources)
 │   ├── EKS Node Group Role       (allows worker nodes to pull from ECR, join cluster)
 │   │
-│   ├── GitHub Actions OIDC Role  (pharma-dev-gitlab-runner-role)
-│   │   ├── Trust policy : repo pharmacy-frontend and pharmacy-backend only
+│   ├── GitHub Actions OIDC Role  (pharmacy-dev-gitlab-runner-role)
+│   │   ├── Trust policy : repo pharmacycy-frontend and pharmacycy-backend only
 │   │   └── Permissions  : ECR push/pull, EKS describe
 │   │   └── How it works : GitHub OIDC token -> AWS STS -> short-lived credentials
 │   │                      No AWS_ACCESS_KEY_ID stored in GitHub
 │   │
-│   ├── ESO IRSA Role             (pharma-dev-eso-role)
+│   ├── ESO IRSA Role             (pharmacy-dev-eso-role)
 │   │   ├── Trust policy : EKS service account external-secrets/external-secrets
-│   │   └── Permissions  : secretsmanager:GetSecretValue on /pharma/* paths only
+│   │   └── Permissions  : secretsmanager:GetSecretValue on /pharmacy/* paths only
 │   │
-│   └── ArgoCD IRSA Role          (pharma-dev-argocd-role)
+│   └── ArgoCD IRSA Role          (pharmacy-dev-argocd-role)
 │       └── Trust policy : EKS service account argocd/argocd-application-controller
 │
 └── AWS Secrets Manager
-    ├── /pharma/dev/db-credentials   {"username": "pharmaadmin", "password": "..."}
-    └── /pharma/dev/jwt-secret       {"secret": "..."}
+    ├── /pharmacy/dev/db-credentials   {"username": "pharmacyadmin", "password": "..."}
+    └── /pharmacy/dev/jwt-secret       {"secret": "..."}
 ```
 
 ---
@@ -151,7 +151,7 @@ Internet
     v
 AWS Network Load Balancer  (created by NGINX Ingress Controller Helm chart)
     |  routes by URL path
-    |-- /          -->  pharma-ui       (React, port 80)
+    |-- /          -->  pharmacy-ui       (React, port 80)
     |-- /api/*     -->  api-gateway     (port 8080)
                            |
                            |-- /api/auth/*          --> auth-service        (8081)
@@ -348,17 +348,17 @@ Replace `YOUR-GITHUB-USERNAME` with your actual GitHub username to make the buck
 ```bash
 # Create the bucket
 aws s3api create-bucket \
-  --bucket pharmacy-terraform-state-YOUR-GITHUB-USERNAME \
+  --bucket pharmacycy-terraform-state-YOUR-GITHUB-USERNAME \
   --region us-east-1
 
 # Enable versioning (allows state rollback)
 aws s3api put-bucket-versioning \
-  --bucket pharmacy-terraform-state-YOUR-GITHUB-USERNAME \
+  --bucket pharmacycy-terraform-state-YOUR-GITHUB-USERNAME \
   --versioning-configuration Status=Enabled
 
 # Enable encryption
 aws s3api put-bucket-encryption \
-  --bucket pharmacy-terraform-state-YOUR-GITHUB-USERNAME \
+  --bucket pharmacycy-terraform-state-YOUR-GITHUB-USERNAME \
   --server-side-encryption-configuration '{
     "Rules": [{
       "ApplyServerSideEncryptionByDefault": {
@@ -369,7 +369,7 @@ aws s3api put-bucket-encryption \
 
 # Block all public access
 aws s3api put-public-access-block \
-  --bucket pharmacy-terraform-state-YOUR-GITHUB-USERNAME \
+  --bucket pharmacycy-terraform-state-YOUR-GITHUB-USERNAME \
   --public-access-block-configuration \
     "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
 ```
@@ -377,7 +377,7 @@ aws s3api put-public-access-block \
 ### 5.2 Verify the Bucket
 
 ```bash
-aws s3 ls s3://pharmacy-terraform-state-YOUR-GITHUB-USERNAME
+aws s3 ls s3://pharmacycy-terraform-state-YOUR-GITHUB-USERNAME
 # Should return empty (no error)
 ```
 
@@ -411,7 +411,7 @@ Update the bucket name in all three environment backend files:
 ```hcl
 terraform {
   backend "s3" {
-    bucket       = "pharmacy-terraform-state-YOUR-GITHUB-USERNAME"
+    bucket       = "pharmacycy-terraform-state-YOUR-GITHUB-USERNAME"
     key          = "envs/dev/terraform.tfstate"
     region       = "us-east-1"
     encrypt      = true
@@ -594,28 +594,28 @@ Apply complete! Resources: 45 added, 0 changed, 0 destroyed.
 
 Outputs:
 
-eks_cluster_name = "pharma-dev-cluster"
-rds_endpoint     = "pharma-dev-postgres.xxxxxxxx.us-east-1.rds.amazonaws.com"
+eks_cluster_name = "pharmacy-dev-cluster"
+rds_endpoint     = "pharmacy-dev-postgres.xxxxxxxx.us-east-1.rds.amazonaws.com"
 ```
 
 ### 11.2 Verify in AWS Console
 
 **EKS:**
 - Go to **AWS Console → EKS → Clusters**
-- Verify `pharma-dev-cluster` is `Active`
+- Verify `pharmacy-dev-cluster` is `Active`
 - Click the cluster → **Compute** tab → verify node group shows 3 nodes `Ready`
 
 **RDS:**
 - Go to **AWS Console → RDS → Databases**
-- Verify `pharma-dev-postgres` is `Available`
+- Verify `pharmacy-dev-postgres` is `Available`
 
 **ECR:**
 - Go to **AWS Console → ECR → Repositories**
-- Verify 5 repositories exist: `api-gateway`, `auth-service`, `pharma-ui`, `notification-service`, `drug-catalog-service`
+- Verify 5 repositories exist: `api-gateway`, `auth-service`, `pharmacy-ui`, `notification-service`, `drug-catalog-service`
 
 **Secrets Manager:**
 - Go to **AWS Console → Secrets Manager**
-- Verify `/pharma/dev/db-credentials` and `/pharma/dev/jwt-secret` exist
+- Verify `/pharmacy/dev/db-credentials` and `/pharmacy/dev/jwt-secret` exist
 
 ### 11.3 Connect to the EKS Cluster Locally
 
@@ -623,7 +623,7 @@ rds_endpoint     = "pharma-dev-postgres.xxxxxxxx.us-east-1.rds.amazonaws.com"
 # Update local kubeconfig
 aws eks update-kubeconfig \
   --region us-east-1 \
-  --name pharma-dev-cluster
+  --name pharmacy-dev-cluster
 
 # Verify connection
 kubectl get nodes
@@ -686,7 +686,7 @@ All 5 repositories have:
 
 ### 12.5 GitHub Actions OIDC
 
-The IAM module creates a GitHub Actions OIDC role that allows CI/CD pipelines in `pharmacy-frontend` and `pharmacy-backend` to push images to ECR **without storing AWS credentials in GitHub Secrets**.
+The IAM module creates a GitHub Actions OIDC role that allows CI/CD pipelines in `pharmacycy-frontend` and `pharmacycy-backend` to push images to ECR **without storing AWS credentials in GitHub Secrets**.
 
 How it works:
 1. GitHub mints a short-lived OIDC token per workflow run
@@ -695,7 +695,7 @@ How it works:
 4. CI uses these credentials to push images to ECR
 
 The role is restricted to:
-- Only `YOUR-GITHUB-USERNAME/pharmacy-frontend` and `YOUR-GITHUB-USERNAME/pharmacy-backend` repos
+- Only `YOUR-GITHUB-USERNAME/pharmacycy-frontend` and `YOUR-GITHUB-USERNAME/pharmacycy-backend` repos
 - Only `main` and `develop` branches
 
 ---
@@ -755,7 +755,7 @@ module "ecr" {
   repositories = [
     "api-gateway",
     "auth-service",
-    "pharma-ui",
+    "pharmacy-ui",
     "notification-service",
     "drug-catalog-service",
     "new-service"            # ← add here
@@ -819,11 +819,11 @@ The S3 state bucket is **not** deleted by Terraform destroy — it is managed se
 
 ```bash
 # Empty the bucket first
-aws s3 rm s3://pharmacy-terraform-state-YOUR-GITHUB-USERNAME --recursive
+aws s3 rm s3://pharmacycy-terraform-state-YOUR-GITHUB-USERNAME --recursive
 
 # Delete the bucket
 aws s3api delete-bucket \
-  --bucket pharmacy-terraform-state-YOUR-GITHUB-USERNAME \
+  --bucket pharmacycy-terraform-state-YOUR-GITHUB-USERNAME \
   --region us-east-1
 ```
 
@@ -837,7 +837,7 @@ ECR repositories cannot be destroyed if they contain images. If you recreated th
 
 **Fix — delete repos manually then re-run:**
 ```bash
-for repo in api-gateway auth-service pharma-ui notification-service drug-catalog-service; do
+for repo in api-gateway auth-service pharmacy-ui notification-service drug-catalog-service; do
   aws ecr delete-repository \
     --repository-name $repo \
     --force \
@@ -899,13 +899,13 @@ If you only changed workflow files (`.github/workflows/`), the `paths` filter pr
 
 ```bash
 # Re-fetch credentials
-aws eks update-kubeconfig --region us-east-1 --name pharma-dev-cluster
+aws eks update-kubeconfig --region us-east-1 --name pharmacy-dev-cluster
 
 # Check your AWS identity
 aws sts get-caller-identity
 
 # Verify cluster is active
-aws eks describe-cluster --name pharma-dev-cluster --query 'cluster.status'
+aws eks describe-cluster --name pharmacy-dev-cluster --query 'cluster.status'
 ```
 
 Only the IAM entity that created the cluster (the CI/CD role or your local user) has access by default. If using a different IAM user locally, you need to add it to the EKS aws-auth ConfigMap.
