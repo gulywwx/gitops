@@ -134,21 +134,37 @@ terraform {
 
 Go to **Settings → Secrets and variables → Actions** in your fork.
 
-Under **Secrets**, add four:
+Under **Secrets**, add seven:
 
-| Secret | Value |
-|---|---|
-| `AWS_ACCESS_KEY_ID` | Access key from [step 3](#3-create-the-terraform-iam-user) |
-| `AWS_SECRET_ACCESS_KEY` | Secret key from [step 3](#3-create-the-terraform-iam-user) |
-| `DEV_DB_PASSWORD` | RDS master password, 8 characters or more |
-| `DEV_JWT_SECRET` | Random string, e.g. `openssl rand -hex 32` |
+| Secret | Value | Purpose |
+|---|---|---|
+| `AWS_ACCESS_KEY_ID` | Access key from [step 3](#3-create-the-terraform-iam-user) | Authenticates Terraform in CI |
+| `AWS_SECRET_ACCESS_KEY` | Secret key from [step 3](#3-create-the-terraform-iam-user) | Authenticates Terraform in CI |
+| `AWS_ACCOUNT_ID` | Your 12-digit account number, e.g. `123456789012` | Builds the IAM role ARN and ECR registry URL in the app pipeline |
+| `DEV_DB_PASSWORD` | RDS master password, 8 characters or more | Passed to `terraform apply` as `db_password` |
+| `DEV_JWT_SECRET` | Random string, e.g. `openssl rand -hex 32` | Passed to `terraform apply` as `jwt_secret` |
+| `GITOPS_TOKEN` | GitHub PAT with `repo` scope | Write access to the gitops repo for updating image tags and opening PRs |
+| `SONAR_TOKEN` | SonarCloud token | Authenticates SonarCloud SAST and code-quality scans |
 
-Under **Variables**, add two:
+Look up your account ID with:
 
-| Variable | Value |
-|---|---|
-| `GH_ORG` | `gulywwx` |
-| `TF_STATE_BUCKET` | `pharmacy-terraform-state-gulywwx` |
+```bash
+aws sts get-caller-identity --query Account --output text
+```
+
+Create `GITOPS_TOKEN` under **Settings → Developer settings → Personal access tokens**. A classic token needs the `repo` scope; a fine-grained one needs **Contents: read and write** plus **Pull requests: read and write** on this repository. The default `GITHUB_TOKEN` cannot be used here, because it has no access to other repositories.
+
+Get `SONAR_TOKEN` from **SonarCloud → My Account → Security → Generate Token**.
+
+Under **Variables**, add five:
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `GH_ORG` | `gulywwx` | Passed to Terraform as `github_org` for the OIDC trust policy |
+| `TF_STATE_BUCKET` | `pharmacy-terraform-state-gulywwx` | Lets CI clear a stranded state lock after a cancelled run |
+| `GITOPS_REPO` | `gulywwx/gitops` (your org/repo) | Tells the app pipeline which repo to update with new image tags |
+| `SONAR_ORG` | Your SonarCloud organization key | Identifies your SonarCloud organization |
+| `SONAR_PROJECT_KEY_FRONTEND` | Project key for `pharma-ui` in SonarCloud | Identifies this project within your SonarCloud organization |
 
 Check them from the CLI:
 
@@ -158,6 +174,13 @@ gh variable list
 ```
 
 `TF_STATE_BUCKET` is what the workflow uses to clear a stranded state lock after a cancelled run. Leave it unset and that cleanup silently does nothing.
+
+The two workflows draw on different subsets. `infra.yml` reads `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DEV_DB_PASSWORD`, `DEV_JWT_SECRET`, `GH_ORG`, and `TF_STATE_BUCKET`. `frontend.yml` reads `AWS_ACCOUNT_ID` and `GITOPS_TOKEN`.
+
+Three of these are staged ahead of the workflow changes that consume them:
+
+- `GITOPS_REPO` is currently hardcoded at `frontend.yml` line 23 as `GITOPS_REPO: gulywwx/gitops`. Change that line to `GITOPS_REPO: ${{ vars.GITOPS_REPO }}` for the variable to take effect. Until then, forks have to edit the workflow directly.
+- `SONAR_ORG` and `SONAR_PROJECT_KEY_FRONTEND` are unreferenced, along with `SONAR_TOKEN`, because no SonarCloud step exists yet.
 
 ---
 

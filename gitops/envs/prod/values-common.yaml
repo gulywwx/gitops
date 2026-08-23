@@ -1,0 +1,6 @@
+# Shared image registry for the prod environment.
+# Written by CI from the ECR login, so the account ID always matches the registry
+# images were actually pushed to. Charts read .Values.global.imageRegistry, and
+# each service values file carries only the bare repository name.
+global:
+  imageRegistry: 603767527880.dkr.ecr.us-east-1.amazonaws.com

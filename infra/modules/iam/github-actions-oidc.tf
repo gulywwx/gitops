@@ -26,6 +26,26 @@ resource "aws_iam_openid_connect_provider" "github_actions" {
   }
 }
 
+locals {
+  # GitHub tightened OIDC sub claims on 2026-07-15: repos created after that date (or
+  # opted in) mint tokens with immutable owner/repo IDs instead of the mutable name,
+  # e.g. repo:org@<org_id>/repo@<repo_id>:ref:refs/heads/<branch>. Mutable-name subs
+  # silently stop matching, so ideally the trust policy keys off IDs, not names.
+  # https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws
+  #
+  # Immutable subject claims are opt-in per repo/org; gulywwx hasn't enabled it yet,
+  # so GitHub still mints tokens with the legacy "org/repo" (no @id) sub claim. Both
+  # formats are listed so this keeps working whenever gulywwx does opt in.
+  github_oidc_subs = flatten([
+    for repo_name, repo_id in var.github_repo_ids : flatten([
+      for branch in ["main", "develop"] : [
+        "repo:${var.github_org}@${var.github_org_id}/${repo_name}@${repo_id}:ref:refs/heads/${branch}",
+        "repo:${var.github_org}/${repo_name}:ref:refs/heads/${branch}",
+      ]
+    ])
+  ])
+}
+
 data "aws_iam_policy_document" "github_actions_assume_role" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
@@ -45,12 +65,7 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values = [
-        "repo:${var.github_org}/frontend:ref:refs/heads/main",
-        "repo:${var.github_org}/frontend:ref:refs/heads/develop",
-        "repo:${var.github_org}/backend:ref:refs/heads/main",
-        "repo:${var.github_org}/backend:ref:refs/heads/develop",
-      ]
+      values   = local.github_oidc_subs
     }
   }
 }
