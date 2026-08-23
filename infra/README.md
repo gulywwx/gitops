@@ -46,7 +46,7 @@ AWS Account (us-east-1)
 │
 ├── VPC  (10.0.0.0/16)
 │   ├── Public Subnets        10.0.1.0/24  (us-east-1a)  ]  NAT Gateway,
-│   │                         10.0.2.0/24  (us-east-1b)  ]  NLB, Ingress
+│   │                         10.0.2.0/24  (us-east-1b)  ]  ALB, Ingress
 │   ├── Private EKS Subnets   10.0.3.0/24  (us-east-1a)  ]  EKS worker
 │   │                         10.0.4.0/24  (us-east-1b)  ]  nodes (private)
 │   └── Private RDS Subnets   10.0.5.0/24  (us-east-1a)  ]  RDS PostgreSQL
