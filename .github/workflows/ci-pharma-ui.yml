@@ -36,6 +36,9 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v5
 
@@ -44,6 +47,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -56,6 +60,9 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     needs: lint
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v5
 
@@ -64,6 +71,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -73,11 +81,13 @@ jobs:
         env:
           CI: true
 
+      # `path` is an action input, so `defaults.run` does not apply to it —
+      # it stays relative to the workspace root.
       - name: Upload coverage report
         uses: actions/upload-artifact@v6
         with:
           name: coverage-report
-          path: coverage/
+          path: frontend/coverage/
           retention-days: 3
 
   # ── 3. Code Quality & Security (SonarCloud + npm audit) ──────────────────
@@ -91,16 +101,19 @@ jobs:
           fetch-depth: 0
 
       - name: Download coverage report
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v6
         with:
           name: coverage-report
-          path: coverage/
+          path: frontend/coverage/
 
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v3
+      - name: SonarQube Cloud Scan
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
+          # Confines the scan to frontend/; sonar.sources and the lcov path
+          # below are resolved relative to this directory.
+          projectBaseDir: frontend
           args: >
             -Dsonar.organization=${{ vars.SONAR_ORG }}
             -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY_FRONTEND }}
@@ -111,6 +124,7 @@ jobs:
 
       - name: npm audit (HIGH/CRITICAL — fail)
         run: npm audit --audit-level=high
+        working-directory: frontend
         continue-on-error: true
 
   # ── 4. Build React App ───────────────────────────────────────────────────
@@ -118,6 +132,9 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [test, sonar]
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v5
 
@@ -126,6 +143,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -137,7 +155,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: build-artifact
-          path: build/
+          path: frontend/build/
 
   # ── 5. Docker Build, Trivy Scan & Push to ECR ────────────────────────────
   docker-build-push:
@@ -167,8 +185,9 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
+            -f frontend/Dockerfile \
             -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.image_tag }} \
-            -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest .
+            -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest frontend
 
       - name: Trivy — scan image for vulnerabilities
         uses: aquasecurity/trivy-action@master
@@ -211,7 +230,7 @@ jobs:
           IMAGE_TAG: ${{ needs.docker-build-push.outputs.image_tag }}
         run: |
           yq e ".image.tag = \"${IMAGE_TAG}\"" -i \
-            "_gitops/envs/dev/values-pharma-ui.yaml"
+            "_gitops/gitops/envs/dev/values-pharma-ui.yaml"
           cd _gitops
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
