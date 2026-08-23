@@ -39,7 +39,7 @@ jobs:
 
       - name: Validate QA values file exists
         run: |
-          QA_VALUES="_gitops/envs/qa/values-pharma-ui.yaml"
+          QA_VALUES="_gitops/gitops/envs/qa/values-pharma-ui.yaml"
           if [[ ! -f "$QA_VALUES" ]]; then
             echo "::error::QA values file not found: ${QA_VALUES}"
             echo "::error::Cannot determine which image is running in QA."
@@ -59,12 +59,12 @@ jobs:
 
       - name: Validate PROD values file exists
         run: |
-          PROD_VALUES="_gitops/envs/prod/values-pharma-ui.yaml"
+          PROD_VALUES="_gitops/gitops/envs/prod/values-pharma-ui.yaml"
           if [[ ! -f "$PROD_VALUES" ]]; then
             echo "::error::PROD values file not found: ${PROD_VALUES}"
             exit 1
           fi
-          echo "PROD_VALUES=envs/prod/values-pharma-ui.yaml" >> "$GITHUB_ENV"
+          echo "PROD_VALUES=gitops/envs/prod/values-pharma-ui.yaml" >> "$GITHUB_ENV"
 
       - name: Create branch, patch values, open PR
         env:
