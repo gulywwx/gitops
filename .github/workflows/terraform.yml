@@ -99,7 +99,7 @@ jobs:
 
       - name: Upload plan file
         if: steps.plan.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: tfplan
           path: infra/envs/dev/tfplan
