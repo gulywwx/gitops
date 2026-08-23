@@ -40,7 +40,7 @@ export default function Layout() {
     <Box>
       <Box sx={{ p: 2, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', gap: 1 }}>
         <MedicationIcon />
-        <Typography variant="h6" noWrap>PharmaDev</Typography>
+        <Typography variant="h6" noWrap fontWeight={700}>ZenPharma</Typography>
       </Box>
       <List>
         {navItems.map(item => (
@@ -70,7 +70,7 @@ export default function Layout() {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>
-            Pharma Manufacturing Portal
+            ZenPharma Manufacturing Portal
           </Typography>
           <Typography variant="body2" sx={{ mr: 2 }}>{user?.username} ({user?.role})</Typography>
           <Tooltip title="Logout">

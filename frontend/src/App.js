@@ -1,5 +1,4 @@
 import React from 'react';
-import PropTypes from 'prop-types';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -17,10 +16,6 @@ function PrivateRoute({ children }) {
   const { token } = useAuth();
   return token ? children : <Navigate to="/login" />;
 }
-
-PrivateRoute.propTypes = {
-  children: PropTypes.node.isRequired,
-};
 
 function App() {
   return (

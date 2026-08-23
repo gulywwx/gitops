@@ -325,42 +325,76 @@ The CI pipeline needs two kinds of access:
 | `SONAR_ORG` | Your SonarCloud organization key | Identifies your SonarCloud organization |
 | `SONAR_PROJECT_KEY_FRONTEND` | Project key for pharma-ui in SonarCloud | Identifies this project within your SonarCloud organization |
 
-**SonarCloud setup:**
+**SonarQube Cloud setup:**
+
+> **Naming note:** SonarCloud was rebranded to **SonarQube Cloud** in December 2024. The domain `sonarcloud.io` did not change, but the old **Import an organization** button is gone. Organization creation now lives behind the **✚** menu, so older tutorials will send you looking for a button that no longer exists.
 
 1. Go to https://sonarcloud.io and click **Log in** → sign in with your **GitHub account**
-2. Click **Import an organization** → select your GitHub organization (e.g., `zenpharma`)
-3. Choose the **Free plan** → click **Create Organization**
-4. Click **Analyze new project** → select your `frontend` repository → click **Set Up**
-5. SonarCloud creates the project
+2. Click the **✚ (plus)** icon in the top-right navigation bar → **Create new organization**
+3. Under *Import from a DevOps platform*, choose **GitHub**
+4. GitHub opens the **Install SonarQubeCloud** page → select your GitHub organization (e.g., `zenpharma`)
+5. Choose the repository access scope — **All repositories**, or **Only select repositories** and pick your frontend repo → click **Save**
+6. Back in SonarQube Cloud, set the **Organization Key**. This is the value you will store as the `SONAR_ORG` variable, and it is separate from the GitHub org name
+7. Choose the **Free** plan → click **Create Organization**
+8. On the repository import screen that follows, select your frontend repository — or **Bulk import all** — then click **Analyze projects**
+
+Shortcut: https://sonarcloud.io/create-organization jumps straight to step 2.
+
+> **If your GitHub org previously had the legacy SonarCloud app installed**, note that repository access is granted per app. Both **SonarCloud** (legacy) and **SonarQubeCloud** (current) can appear in your GitHub settings. Grant access on **SonarQubeCloud** — approving the legacy one looks correct but the scan will never see your repository.
 
 **Disable Automatic Analysis (important):**
 
-SonarCloud enables **Automatic Analysis** by default on new projects. This conflicts with our CI-based analysis from GitHub Actions — you cannot run both at the same time. If you skip this step, the pipeline will fail with: `You are running CI analysis while Automatic Analysis is enabled`.
+SonarQube Cloud enables **Automatic Analysis** by default on every newly imported project. It cannot run alongside CI-based analysis. Skip this step and the pipeline fails with:
 
-1. Go to your **project page** on SonarCloud (not the organization page)
-2. Click **Administration** (bottom of the left sidebar)
+```
+ERROR You are running CI analysis while Automatic Analysis is enabled.
+Please consider disabling one or the other.
+```
+
+1. Open your **project** — from the organization page, click its name in the Projects list (e.g. `gitops`). The next steps only exist inside a project
+2. Click **Administration** in the left sidebar
 3. Click **Analysis Method**
-4. Find the **Automatic Analysis** toggle and turn it **OFF**
-5. The page should now show CI-based analysis as the active method
+4. Turn the **Automatic Analysis** toggle **OFF**
 
-> **Note:** The toggle is on the **project** settings page, not the organization settings page. If you go to Organization Settings → Analysis, you'll only see a description — the actual on/off toggle is per-project under Administration → Analysis Method.
+That is the whole action. The page does **not** display a confirmation such as "CI-based analysis is now active" — SonarQube Cloud only tracks whether Automatic Analysis is on or off, not which CI system you use. With the toggle off, any analysis your pipeline submits is accepted.
+
+The **Set up analysis via other methods** cards underneath (*With GitHub Actions*, *With CircleCI*, *With other CI tools*, *Manually*) are optional walkthroughs, not a status indicator. They are always shown, and you do not need to click one for the toggle to take effect.
+
+> **Worth a click anyway:** *With GitHub Actions* opens a tutorial pre-filled with this project's exact `sonar.projectKey` and `sonar.organization` values — the two strings you need for the `SONAR_PROJECT_KEY_FRONTEND` and `SONAR_ORG` variables. It also walks through creating the `SONAR_TOKEN` secret.
+
+> **Can't find "Analysis Method"?** Two causes, most common first:
+>
+> 1. **You are on the organization page, not a project page.** The organization-level Administration menu contains only *Organization Settings*, *AI capabilities*, *New code*, and *Quality gate settings*. There is no Analysis Method there. Click into a project first — the breadcrumb should read `<Org> / <Project>`, not `<Org> / Projects`.
+> 2. **You are not a project administrator.** The toggle is visible only to project admins. Organization admin rights do **not** include project admin rights automatically, so the menu entry stays hidden even on the correct page.
+
+> **Organization-level disable is Enterprise-only.** *Administration → Organization Settings → Analysis → Analysis Method → Automatic analysis for new projects* exists, but requires the Enterprise plan and only affects **newly created** projects. On the Free plan, turn it off per project.
+
+> **A `sonar-project.properties` file does not disable Automatic Analysis.** Automatic Analysis ignores that file completely — it will not read your `sonar.sources`, exclusions, or coverage paths. This is why a freshly imported repository gets scanned end to end in every language it can detect, even when the properties file scopes the project to one subdirectory. Only the UI toggle turns it off.
 
 **How to find the Organization Key and Project Key:**
 
-1. Go to your project page on SonarCloud
-2. Click **Project Information** (bottom of the left sidebar)
-3. You will see both values:
+1. Go to your project page on SonarQube Cloud
+2. Click **Project Information** in the left sidebar
+3. You will see both values, each with a copy button:
    - **Organization Key** — typically your GitHub org name in lowercase (e.g., `zenpharma`)
    - **Project Key** — typically in the format `<org>_<repo>` (e.g., `zenpharma_frontend`)
 
-You can also find them in the URL: `https://sonarcloud.io/project/overview?id=<project-key>`
+Direct link: `https://sonarcloud.io/project/information?id=<project-key>`
 
-**Generate a SonarCloud token:**
+The organization key on its own is also listed under your account menu → **My Organizations**, or at `https://sonarcloud.io/organizations/<org-key>`.
+
+> Both are **keys**, not display names. A project shown as "Pharma UI" in the UI may well have the key `zenpharma_frontend`. Copy the key, not the title.
+
+**Generate a SonarQube Cloud token:**
 
 1. Click your **profile icon** (top right) → **My Account**
 2. Go to the **Security** tab
 3. Enter a token name (e.g., `github-actions`) → click **Generate**
 4. Copy the token and save it as the `SONAR_TOKEN` secret above
+
+The token is shown once. Lose it and you generate a new one; there is no way to read it back.
+
+> **Which action?** `SonarSource/sonarcloud-github-action` is deprecated and its repository is archived. The replacement is `SonarSource/sonarqube-scan-action`, which serves both SonarQube Cloud and SonarQube Server. It takes the same `args:`, so the migration is a one-line change. `SONAR_HOST_URL` is only needed for self-hosted Server — for Cloud, the token alone is enough.
 
 > **Why SonarCloud?**
 > SonarCloud provides SAST (static application security testing), code-quality analysis, code-smell detection, and coverage tracking in a single managed service. It integrates natively with GitHub pull requests, posting inline comments on new issues. Unlike self-hosted tools, SonarCloud requires zero infrastructure — just a token and a GitHub Action.
@@ -530,8 +564,8 @@ jobs:
           name: coverage-report
           path: coverage/
 
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v3
+      - name: SonarQube Cloud Scan
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:

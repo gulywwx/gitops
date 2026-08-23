@@ -14,7 +14,7 @@ module.exports = {
     'no-var': 'error',
 
     // ── React ─────────────────────────────────────────────────────────────
-    'react/prop-types': 'warn',           // remind devs to add PropTypes
+    'react/prop-types': 'off',
     'react/no-unused-state': 'warn',
     'react/jsx-no-duplicate-props': 'error',
   },

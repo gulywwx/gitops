@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
@@ -8,7 +9,7 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false 
 
 test('renders login page', () => {
   render(
-    <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+    <MemoryRouter>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <Login />
@@ -16,5 +17,5 @@ test('renders login page', () => {
       </QueryClientProvider>
     </MemoryRouter>
   );
-  expect(screen.getByText(/PharmaDev Portal/i)).toBeInTheDocument();
+  expect(screen.getByText(/ZenPharma/i)).toBeInTheDocument();
 });
