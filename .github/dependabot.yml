@@ -1,0 +1,62 @@
+version: 2
+updates:
+  # Terraform provider and module version updates
+  - package-ecosystem: "terraform"
+    directory: "/infra/envs/dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "terraform"
+      - "dev"
+
+  - package-ecosystem: "terraform"
+    directory: "/infra/envs/qa"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "terraform"
+      - "qa"
+
+  - package-ecosystem: "terraform"
+    directory: "/infra/envs/prod"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "terraform"
+      - "prod"
+
+
+  # GitHub Actions workflow dependencies (if any workflows added later)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "ci"
+
+
+  # React app npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "frontend"
+    ignore:
+      # Major React version bumps — review manually
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
