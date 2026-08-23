@@ -13,5 +13,19 @@ variable "jwt_secret" {
 variable "github_org" {
   description = "GitHub username or organization that owns frontend and backend"
   type        = string
-  default     = "zenpharma"
+  default     = "gulywwx"
+}
+
+variable "github_org_id" {
+  description = "Numeric GitHub organization/owner ID. Fetch via: curl https://api.github.com/orgs/<github_org>"
+  type        = string
+  default     = "25069476"
+}
+
+variable "github_repo_ids" {
+  description = "Map of GitHub repo name to its numeric GitHub repository ID. Fetch via: curl https://api.github.com/repos/<github_org>/<repo>"
+  type        = map(string)
+  default = {
+    "gitops"     = "1342817912"
+  }
 }
