@@ -45,6 +45,12 @@ jobs:
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
+    # Skip on destroy dispatch. A plan is meaningless ahead of a destroy, and
+    # because `destroy` starts in parallel the two jobs would otherwise race
+    # for the same S3 state lock — whichever loses fails with a 412.
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.action != 'destroy'
     defaults:
       run:
         working-directory: infra/envs/dev
@@ -194,7 +200,7 @@ jobs:
             -auto-approve \
             -no-color
 
-      - name: Release state lock on failure
+      - name: Release stranded state lock on cancellation
         if: failure() || cancelled()
         run: |
           aws s3 rm s3://${{ vars.TF_STATE_BUCKET }}/envs/dev/terraform.tfstate.tflock || true
