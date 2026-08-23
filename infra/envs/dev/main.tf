@@ -55,6 +55,12 @@ module "ecr" {
 
   project = local.project
   env     = local.env
+
+  # dev is torn down and rebuilt routinely, and its images are rebuilt from
+  # source on every push. qa and prod deliberately leave this at the default
+  # of false so a destroy cannot discard promoted artifacts.
+  force_delete = true
+
   repositories = [
     "api-gateway",
     "auth-service",
