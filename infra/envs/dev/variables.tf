@@ -26,6 +26,6 @@ variable "github_repo_ids" {
   description = "Map of GitHub repo name to its numeric GitHub repository ID. Fetch via: curl https://api.github.com/repos/<github_org>/<repo>"
   type        = map(string)
   default = {
-    "gitops"     = "1342817912"
+    "gitops" = "1342817912"
   }
 }
