@@ -90,13 +90,26 @@ jobs:
       - name: Start PostgreSQL (integration tests)
         if: ${{ inputs.needs-database }}
         run: |
+          POSTGRES_IMAGE=public.ecr.aws/docker/library/postgres:15-alpine
+          for attempt in 1 2 3 4 5; do
+            if docker pull "$POSTGRES_IMAGE"; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::Failed to pull $POSTGRES_IMAGE after 5 attempts."
+              exit 1
+            fi
+            echo "Pull failed (attempt $attempt). Retrying in $((attempt * 5))s..."
+            sleep $((attempt * 5))
+          done
+          docker rm -f testdb >/dev/null 2>&1 || true
           docker run -d \
             --name testdb \
             -e POSTGRES_DB=testdb \
             -e POSTGRES_USER=testuser \
             -e POSTGRES_PASSWORD=testpass \
             -p 5432:5432 \
-            postgres:15-alpine
+            "$POSTGRES_IMAGE"
           echo "Waiting for PostgreSQL to be ready..."
           until docker exec testdb pg_isready -U testuser 2>/dev/null; do
             sleep 2
