@@ -323,7 +323,7 @@ The CI pipeline needs two kinds of access:
 |---------------|-------|---------|
 | `GITOPS_REPO` | `zenpharma/gitops` (your org/repo) | Tells the CI workflow which repo to update with new image tags |
 | `SONAR_ORG` | Your SonarCloud organization key | Identifies your SonarCloud organization |
-| `SONAR_PROJECT_KEY_FRONTEND` | Project key for pharma-ui in SonarCloud | Identifies this project within your SonarCloud organization |
+| `SONAR_PROJECT_KEY` | Project key in SonarCloud | Shared by the frontend and all backend service pipelines |
 
 **SonarQube Cloud setup:**
 
@@ -360,7 +360,7 @@ That is the whole action. The page does **not** display a confirmation such as "
 
 The **Set up analysis via other methods** cards underneath (*With GitHub Actions*, *With CircleCI*, *With other CI tools*, *Manually*) are optional walkthroughs, not a status indicator. They are always shown, and you do not need to click one for the toggle to take effect.
 
-> **Worth a click anyway:** *With GitHub Actions* opens a tutorial pre-filled with this project's exact `sonar.projectKey` and `sonar.organization` values — the two strings you need for the `SONAR_PROJECT_KEY_FRONTEND` and `SONAR_ORG` variables. It also walks through creating the `SONAR_TOKEN` secret.
+> **Worth a click anyway:** *With GitHub Actions* opens a tutorial pre-filled with this project's exact `sonar.projectKey` and `sonar.organization` values — the two strings you need for the `SONAR_PROJECT_KEY` and `SONAR_ORG` variables. It also walks through creating the `SONAR_TOKEN` secret.
 
 > **Can't find "Analysis Method"?** Two causes, most common first:
 >
@@ -571,7 +571,7 @@ jobs:
         with:
           args: >
             -Dsonar.organization=${{ vars.SONAR_ORG }}
-            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY_FRONTEND }}
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
             -Dsonar.sources=src
             -Dsonar.tests=src
             -Dsonar.test.inclusions=**/*.test.js,**/*.test.jsx
@@ -1259,7 +1259,7 @@ git push
 | **Nginx Config** | SPA routing, API proxy to backend, gzip compression, security headers |
 | **Branch Protection** | `main` branch requires PR (0 approvals — solo-friendly), no direct pushes |
 | **Branching Strategy** | `develop` for active work, `main` for stable releases, `feature/*` for individual changes |
-| **GitHub Secrets** | `AWS_ACCOUNT_ID`, `GITOPS_TOKEN`, `SONAR_TOKEN` + `GITOPS_REPO`, `SONAR_ORG`, `SONAR_PROJECT_KEY_FRONTEND` variables |
+| **GitHub Secrets** | `AWS_ACCOUNT_ID`, `GITOPS_TOKEN`, `SONAR_TOKEN` + `GITOPS_REPO`, `SONAR_ORG`, `SONAR_PROJECT_KEY` variables |
 | **CI/CD Workflow** | 6-job pipeline: Lint, Test, SonarCloud, Build, Docker Build & Push, Deploy DEV |
 | **QA Promotion** | Manual workflow reads DEV image tag, opens PR in gitops repo for QA deployment |
 | **PROD Promotion** | Manual workflow reads QA image tag, opens PR in gitops repo with approval checklist |

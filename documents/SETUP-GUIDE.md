@@ -61,8 +61,7 @@ Two tables — fill in Phase 1 values before starting, Phase 2 values while Terr
 |---|---|---|
 | `<YOUR-GITOPS-TOKEN>` | | GitHub PAT — Step 6 |
 | `<YOUR-SONAR-ORG>` | | SonarCloud org key — Step 7 |
-| `<YOUR-SONAR-PROJECT-FRONTEND>` | | SonarCloud project key for pharma-ui |
-| `<YOUR-SONAR-PROJECT-BACKEND>` | | SonarCloud project key for backend |
+| `<YOUR-SONAR-PROJECT-KEY>` | | SonarCloud project key for pharma-ui and backend |
 | `<YOUR-SONAR-TOKEN>` | | SonarCloud API token |
 
 ---
@@ -416,7 +415,7 @@ Your organisation key is typically your GitHub username. Save as `<YOUR-SONAR-OR
    > If Automatic Analysis is ON, SonarCloud will conflict with the CI pipeline and both will fail.
 4. Note the `projectKey` shown (typically `<YOUR-SONAR-ORG>_frontend`)
 
-Save as `<YOUR-SONAR-PROJECT-FRONTEND>`.
+Save as `<YOUR-SONAR-PROJECT-KEY>`.
 
 ### 7d. Create the Backend Project
 
@@ -425,7 +424,7 @@ Repeat for `backend`:
 2. **With GitHub Actions** → **Disable Automatic Analysis**
 3. Note the `projectKey` (typically `<YOUR-SONAR-ORG>_backend`)
 
-Save as `<YOUR-SONAR-PROJECT-BACKEND>`.
+Save as `<YOUR-SONAR-PROJECT-KEY>`.
 
 ### 7e. Generate a SonarCloud Token
 
@@ -494,7 +493,7 @@ Go to: `https://github.com/<YOUR-GITHUB-USERNAME>/frontend → Settings`
 |---|---|---|
 | `GITOPS_REPO` | `<YOUR-GITHUB-USERNAME>/gitops` | Target repo for image tag commits |
 | `SONAR_ORG` | `<YOUR-SONAR-ORG>` | SonarCloud organisation key |
-| `SONAR_PROJECT_KEY_FRONTEND` | `<YOUR-SONAR-PROJECT-FRONTEND>` | SonarCloud project key |
+| `SONAR_PROJECT_KEY` | `<YOUR-SONAR-PROJECT-KEY>` | SonarCloud project key |
 
 ### 9c. Create the `dev` GitHub Environment
 
@@ -528,7 +527,7 @@ Go to: `https://github.com/<YOUR-GITHUB-USERNAME>/backend → Settings`
 |---|---|---|
 | `GITOPS_REPO` | `<YOUR-GITHUB-USERNAME>/gitops` | Target repo for image tag commits |
 | `SONAR_ORG` | `<YOUR-SONAR-ORG>` | SonarCloud organisation key |
-| `SONAR_PROJECT_KEY_BACKEND` | `<YOUR-SONAR-PROJECT-BACKEND>` | SonarCloud project key |
+| `SONAR_PROJECT_KEY` | `<YOUR-SONAR-PROJECT-KEY>` | SonarCloud project key |
 
 ### 10c. Create the `dev` GitHub Environment
 
@@ -952,7 +951,7 @@ Use this as a final checklist before triggering Terraform.
 | Secret | `GITOPS_TOKEN` | `<YOUR-GITOPS-TOKEN>` |
 | Variable | `GITOPS_REPO` | `<YOUR-GITHUB-USERNAME>/gitops` |
 | Variable | `SONAR_ORG` | `<YOUR-SONAR-ORG>` |
-| Variable | `SONAR_PROJECT_KEY_FRONTEND` | `<YOUR-SONAR-PROJECT-FRONTEND>` |
+| Variable | `SONAR_PROJECT_KEY` | `<YOUR-SONAR-PROJECT-KEY>` |
 
 ### `<YOUR-GITHUB-USERNAME>/backend`
 
@@ -963,7 +962,7 @@ Use this as a final checklist before triggering Terraform.
 | Secret | `GITOPS_TOKEN` | `<YOUR-GITOPS-TOKEN>` |
 | Variable | `GITOPS_REPO` | `<YOUR-GITHUB-USERNAME>/gitops` |
 | Variable | `SONAR_ORG` | `<YOUR-SONAR-ORG>` |
-| Variable | `SONAR_PROJECT_KEY_BACKEND` | `<YOUR-SONAR-PROJECT-BACKEND>` |
+| Variable | `SONAR_PROJECT_KEY` | `<YOUR-SONAR-PROJECT-KEY>` |
 
 ### `<YOUR-GITHUB-USERNAME>/gitops` (code changes, no secrets)
 

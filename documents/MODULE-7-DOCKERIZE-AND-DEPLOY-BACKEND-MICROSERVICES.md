@@ -1503,7 +1503,7 @@ In the same **Secrets and variables** > **Actions** page:
 |----------|-------|-------------|
 | `GITOPS_REPO` | `<your-github-org>/gitops` | Your gitops repo in `owner/repo` format |
 | `SONAR_ORG` | Your SonarCloud organization key | Same as frontend — SonarCloud → **Project Information** |
-| `SONAR_PROJECT_KEY_BACKEND` | Project key for backend | SonarCloud → backend project → **Project Information** |
+| `SONAR_PROJECT_KEY` | Project key shared by frontend and backend | SonarCloud → project → **Project Information** |
 
 ### Step 4: Protect Main Branch
 

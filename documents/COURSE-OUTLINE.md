@@ -544,7 +544,7 @@ gh --version
   - Disable Automatic Analysis (Administration → Analysis Method → toggle OFF)
   - Find project key via **Project Information** in SonarCloud sidebar
 - **Add repository secrets:** `AWS_ACCOUNT_ID`, `GITOPS_TOKEN`, `SONAR_TOKEN` (reuse from Module 4)
-- **Add repository variables:** `GITOPS_REPO`, `SONAR_ORG`, `SONAR_PROJECT_KEY_BACKEND`
+- **Add repository variables:** `GITOPS_REPO`, `SONAR_ORG`, `SONAR_PROJECT_KEY`
 - Protect `main` branch (require PR, 0 approvals)
 - Create `develop` branch
 

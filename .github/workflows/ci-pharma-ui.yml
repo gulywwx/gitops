@@ -116,7 +116,7 @@ jobs:
           projectBaseDir: frontend
           args: >
             -Dsonar.organization=${{ vars.SONAR_ORG }}
-            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY_FRONTEND }}
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
             -Dsonar.sources=src
             -Dsonar.tests=src
             -Dsonar.test.inclusions=**/*.test.js,**/*.test.jsx
