@@ -89,19 +89,24 @@ jobs:
       # ── Optional PostgreSQL for services that need a DB in tests ─────────────
       - name: Start PostgreSQL (integration tests)
         if: ${{ inputs.needs-database }}
+        env:
+          # ECR Public mirrors the Docker Official Images and imposes no anonymous
+          # pull rate limit, unlike registry-1.docker.io.
+          POSTGRES_IMAGE: public.ecr.aws/docker/library/postgres:15-alpine
         run: |
-          POSTGRES_IMAGE=public.ecr.aws/docker/library/postgres:15-alpine
-          for attempt in 1 2 3 4 5; do
-            if docker pull "$POSTGRES_IMAGE"; then
-              break
-            fi
-            if [ "$attempt" -eq 5 ]; then
-              echo "::error::Failed to pull $POSTGRES_IMAGE after 5 attempts."
-              exit 1
-            fi
-            echo "Pull failed (attempt $attempt). Retrying in $((attempt * 5))s..."
-            sleep $((attempt * 5))
+          set -euo pipefail
+
+          pulled=""
+          for attempt in 1 2 3; do
+            if docker pull "$POSTGRES_IMAGE"; then pulled=yes; break; fi
+            echo "::warning::Pull attempt ${attempt} failed; retrying"
+            sleep $((attempt * 10))
           done
+          if [ -z "$pulled" ]; then
+            echo "::error::Could not pull ${POSTGRES_IMAGE} after 3 attempts"
+            exit 1
+          fi
+
           docker rm -f testdb >/dev/null 2>&1 || true
           docker run -d \
             --name testdb \
@@ -110,10 +115,17 @@ jobs:
             -e POSTGRES_PASSWORD=testpass \
             -p 5432:5432 \
             "$POSTGRES_IMAGE"
-          echo "Waiting for PostgreSQL to be ready..."
-          until docker exec testdb pg_isready -U testuser 2>/dev/null; do
+
+          ready=""
+          for _ in $(seq 60); do
+            if docker exec testdb pg_isready -U testuser >/dev/null 2>&1; then ready=yes; break; fi
             sleep 2
           done
+          if [ -z "$ready" ]; then
+            echo "::error::PostgreSQL did not become ready within 120s"
+            docker logs testdb || true
+            exit 1
+          fi
           echo "PostgreSQL is ready."
 
 
