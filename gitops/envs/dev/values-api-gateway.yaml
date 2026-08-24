@@ -69,6 +69,5 @@ volumes:
     emptyDir: {}
 serviceAccount:
   create: true
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::873135413040:role/pharma-dev-eks-role
+  annotations: {}
   name: api-gateway

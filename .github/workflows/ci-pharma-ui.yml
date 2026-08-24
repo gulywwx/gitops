@@ -240,14 +240,15 @@ jobs:
         env:
           IMAGE_TAG: ${{ needs.docker-build-push.outputs.image_tag }}
           ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           ENV_DIR="_gitops/gitops/envs/dev"
           VALUES="${ENV_DIR}/values-pharma-ui.yaml"
           COMMON="${ENV_DIR}/values-common.yaml"
 
-          if [[ -z "${ECR_REGISTRY}" ]]; then
-            echo "::error::ECR registry is empty — the login-ecr step did not produce a registry."
+          if [[ -z "${AWS_ACCOUNT_ID}" ]]; then
+            echo "::error::AWS_ACCOUNT_ID secret is not set - ECR registry would be malformed."
             exit 1
           fi
           for f in "${VALUES}" "${COMMON}"; do
