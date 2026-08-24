@@ -164,7 +164,7 @@ Under **Variables**, add five:
 | `TF_STATE_BUCKET` | `pharmacy-terraform-state-gulywwx` | Lets CI clear a stranded state lock after a cancelled run |
 | `GITOPS_REPO` | `gulywwx/gitops` (your org/repo) | Tells the app pipeline which repo to update with new image tags |
 | `SONAR_ORG` | Your SonarCloud organization key | Identifies your SonarCloud organization |
-| `SONAR_PROJECT_KEY_FRONTEND` | Project key for `pharma-ui` in SonarCloud | Identifies this project within your SonarCloud organization |
+| `SONAR_PROJECT_KEY` | Project key in SonarCloud | Shared by the frontend and all backend service pipelines |
 
 Check them from the CLI:
 
@@ -175,12 +175,9 @@ gh variable list
 
 `TF_STATE_BUCKET` is what the workflow uses to clear a stranded state lock after a cancelled run. Leave it unset and that cleanup silently does nothing.
 
-The two workflows draw on different subsets. `infra.yml` reads `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DEV_DB_PASSWORD`, `DEV_JWT_SECRET`, `GH_ORG`, and `TF_STATE_BUCKET`. `frontend.yml` reads `AWS_ACCOUNT_ID` and `GITOPS_TOKEN`.
+The workflows draw on different subsets. `infra.yml` reads `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DEV_DB_PASSWORD`, `DEV_JWT_SECRET`, `GH_ORG`, and `TF_STATE_BUCKET`. `ci-pharma-ui.yml` and the per-service `ci-*.yml` workflows read `AWS_ACCOUNT_ID`, `GITOPS_TOKEN`, and `GITOPS_REPO`.
 
-Three of these are staged ahead of the workflow changes that consume them:
-
-- `GITOPS_REPO` is currently hardcoded at `frontend.yml` line 23 as `GITOPS_REPO: gulywwx/gitops`. Change that line to `GITOPS_REPO: ${{ vars.GITOPS_REPO }}` for the variable to take effect. Until then, forks have to edit the workflow directly.
-- `SONAR_ORG` and `SONAR_PROJECT_KEY_FRONTEND` are unreferenced, along with `SONAR_TOKEN`, because no SonarCloud step exists yet.
+`SONAR_TOKEN`, `SONAR_ORG`, and `SONAR_PROJECT_KEY` are consumed by the SonarCloud step in the reusable build workflows. Leave any of the three unset and that step is skipped with a warning rather than failing the build.
 
 ---
 
@@ -236,6 +233,9 @@ Run them in order:
 cd infra/scripts
 python3 01_install_prerequisites.py
 python3 02_bootstrap_argocd.py
+python3 03_setup_external_secrets.py
+python3 05_deploy_services.py
+
 ```
 
 `01_install_prerequisites.py` prints the ArgoCD admin password once, at the end. Save it. To reach the UI:
@@ -265,6 +265,12 @@ The job stops at the `dev` environment gate for approval.
 ### Locally
 
 ```bash
+
+aws ecr batch-delete-image --region us-east-1 \
+  --repository-name pharma-ui \
+  --image-ids "$(aws ecr list-images --region us-east-1 \
+      --repository-name pharma-ui --query 'imageIds[*]' --output json)"
+
 cd infra/envs/dev
 terraform init
 terraform destroy \
@@ -285,7 +291,7 @@ BUCKET=pharmacy-terraform-state-gulywwx
 # Deletes object versions and delete markers together, 1000 at a time
 while true; do
   KEYS=$(aws s3api list-object-versions --bucket "$BUCKET" --max-keys 1000 \
-    --query '{Objects: [].{Key:Key,VersionId:VersionId}}' --output json 2>/dev/null \
+    --query '{Objects: [Versions, DeleteMarkers][].{Key:Key,VersionId:VersionId}}' --output json 2>/dev/null \
     | python3 -c 'import json,sys; o=json.load(sys.stdin).get("Objects") or []; print(json.dumps({"Objects":o,"Quiet":True}) if o else "")')
   [ -z "$KEYS" ] && break
   aws s3api delete-objects --bucket "$BUCKET" --delete "$KEYS"
@@ -296,18 +302,6 @@ aws s3api list-object-versions --bucket "$BUCKET" \
 
 aws s3api delete-bucket --bucket "$BUCKET" --region us-east-1
 ```
-
-The top-level `[]` projection flattens `Versions` and `DeleteMarkers` into one list. Delete only the versions and `delete-bucket` still fails on the leftover markers.
-
-Deleted the state file but not the bucket? Versioning has you covered. Remove the delete marker and the previous version becomes current again:
-
-```bash
-aws s3api list-object-versions --bucket "$BUCKET" --prefix envs/dev/terraform.tfstate
-aws s3api delete-object --bucket "$BUCKET" \
-  --key envs/dev/terraform.tfstate --version-id "<DELETE-MARKER-VERSION-ID>"
-```
-
-Leave the `.tflock` delete markers alone. Restoring one recreates a lock Terraform will refuse to work around.
 
 ---
 

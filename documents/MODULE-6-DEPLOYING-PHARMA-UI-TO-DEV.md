@@ -199,7 +199,7 @@ Also verify that the GitHub Actions secrets and variables are configured. Go to 
 |----------|---------|
 | `GITOPS_REPO` | `<your-username>/gitops` (owner/repo format) |
 | `SONAR_ORG` | SonarCloud organization key |
-| `SONAR_PROJECT_KEY_FRONTEND` | SonarCloud project key for frontend |
+| `SONAR_PROJECT_KEY` | SonarCloud project key (shared by frontend and backend) |
 
 > **Note:** The frontend CI uses OIDC federation to authenticate with AWS — no `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` needed. The IAM role `pharma-dev-github-actions-role` (created in Module 1) handles authentication automatically.
 

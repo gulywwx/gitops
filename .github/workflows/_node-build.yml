@@ -62,6 +62,9 @@ jobs:
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
       registry:  ${{ steps.login-ecr.outputs.registry }}
+    env:
+      # Must be job-level: `secrets` is unavailable in a step `if`, `env` is.
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
@@ -103,18 +106,21 @@ jobs:
           retention-days: 7
 
       - name: SonarCloud Scan
+        if: env.SONAR_TOKEN != '' && vars.SONAR_ORG != '' && vars.SONAR_PROJECT_KEY != ''
         uses: SonarSource/sonarcloud-github-action@v3
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           projectBaseDir: ${{ inputs.service-dir }}
           args: >
             -Dsonar.organization=${{ vars.SONAR_ORG }}
-            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY_BACKEND }}
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
             -Dsonar.sources=src
             -Dsonar.tests=src
             -Dsonar.test.inclusions=**/*.test.js
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+
+      - name: "SonarCloud skipped (not configured)"
+        if: env.SONAR_TOKEN == '' || vars.SONAR_ORG == '' || vars.SONAR_PROJECT_KEY == ''
+        run: echo "::warning::SonarCloud scan skipped — set the SONAR_TOKEN secret plus the SONAR_ORG and SONAR_PROJECT_KEY variables to enable it."
 
 
       - name: npm audit (HIGH/CRITICAL → warn)
