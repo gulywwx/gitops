@@ -141,7 +141,7 @@ print(f"\n{CYAN}  NOTE: Enter your personal GitHub username, not the organizatio
 print(f"        This is used to replace placeholders in ArgoCD Application manifests.{NC}\n")
 
 GITHUB_USERNAME = prompt("GITHUB_USERNAME", "Your personal GitHub username",
-                         "<your-github-username>", "ravdsun")
+                         "<your-github-username>", "gulywwx")
 
 default_gitops = os.path.join(DEFAULT_PROJECT_ROOT, "gitops")
 GITOPS_PATH     = prompt("GITOPS_PATH", "Local path to your gitops repo",

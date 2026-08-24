@@ -251,7 +251,7 @@ terraform output rds_endpoint
 
 **Option B: AWS CLI:**
 ```bash
-aws rds describe-db-instances \
+aws rds describe-db-instances --region us-east-1 \
   --query "DBInstances[?DBInstanceIdentifier=='pharma-dev-postgres'].Endpoint.Address" \
   --output text
 ```
@@ -534,10 +534,10 @@ kubectl get application pharma-ui-dev -n argocd -w
 
 **Expected output (evolves over ~30 seconds):**
 ```
-NAME             SYNC STATUS   HEALTH STATUS   
-pharma-ui-dev    OutOfSync     Missing         
-pharma-ui-dev    Synced        Progressing     
-pharma-ui-dev    Synced        Healthy         
+NAME             SYNC STATUS   HEALTH STATUS
+pharma-ui-dev    OutOfSync     Missing
+pharma-ui-dev    Synced        Progressing
+pharma-ui-dev    Synced        Healthy
 ```
 
 Press `Ctrl+C` once you see `Synced` and `Healthy`.
