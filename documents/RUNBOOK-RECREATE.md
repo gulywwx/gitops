@@ -2,9 +2,9 @@
 
 Step-by-step instructions to bring the DEV environment back up from zero after a destroy.
 
-> **Estimated time:** 25–35 minutes total  
-> Terraform + EKS node provisioning: ~15 min  
-> Bootstrap scripts: ~8 min  
+> **Estimated time:** 25–35 minutes total
+> Terraform + EKS node provisioning: ~15 min
+> Bootstrap scripts: ~8 min
 > Database init: ~2 min
 
 ---
@@ -65,7 +65,7 @@ aws eks describe-cluster \
 # Expected: ACTIVE
 
 # RDS is available
-aws rds describe-db-instances \
+aws rds describe-db-instances --region us-east-1 \
   --query "DBInstances[?contains(DBInstanceIdentifier,'pharma-${ENV}')].DBInstanceStatus" \
   --output text
 # Expected: available
@@ -162,7 +162,7 @@ The RDS instance is empty after creation. Run the schema init script to create p
 
 First, get the RDS endpoint:
 ```bash
-aws rds describe-db-instances \
+aws rds describe-db-instances --region us-east-1 \
   --query "DBInstances[?contains(DBInstanceIdentifier,'pharma-${ENV}')].Endpoint.Address" \
   --output text
 # Copy this value — you will paste it into the script prompt

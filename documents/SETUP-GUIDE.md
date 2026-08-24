@@ -607,7 +607,7 @@ aws eks describe-cluster \
 # Expected: ACTIVE
 
 # RDS is available
-aws rds describe-db-instances \
+aws rds describe-db-instances --region us-east-1 \
   --query "DBInstances[?contains(DBInstanceIdentifier,'pharma-dev')].DBInstanceStatus" \
   --output text
 # Expected: available
@@ -713,7 +713,7 @@ RDS was created by Terraform but the schemas are empty.
 ### 14a. Get the RDS Endpoint
 
 ```bash
-aws rds describe-db-instances \
+aws rds describe-db-instances --region us-east-1 \
   --query "DBInstances[?contains(DBInstanceIdentifier,'pharma-dev')].Endpoint.Address" \
   --output text
 # Example: pharma-dev-postgres.abc123.us-east-1.rds.amazonaws.com

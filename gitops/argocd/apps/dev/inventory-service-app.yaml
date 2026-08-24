@@ -13,11 +13,12 @@ spec:
   project: pharma
 
   source:
-    repoURL: https://github.com/zenpharma/gitops.git
+    repoURL: https://github.com/gulywwx/gitops.git
     targetRevision: HEAD
-    path: helm-charts
+    path: gitops/helm-charts
     helm:
       valueFiles:
+        - ../envs/dev/values-common.yaml
         - ../envs/dev/values-inventory-service.yaml
 
   destination:
