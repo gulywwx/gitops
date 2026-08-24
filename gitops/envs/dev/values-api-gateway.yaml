@@ -2,7 +2,7 @@ replicaCount: 1
 fullnameOverride: api-gateway
 image:
   repository: api-gateway
-  tag: sha-674c0c7
+  tag: sha-b96219a
   pullPolicy: Always
 service:
   type: ClusterIP
