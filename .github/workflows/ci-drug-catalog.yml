@@ -61,10 +61,21 @@ jobs:
       - name: Update image tag — DEV
         env:
           IMAGE_TAG: ${{ needs.build.outputs.image-tag }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           SVC: ${{ env.GITOPS_SERVICE_NAME }}
         run: |
           yq e ".image.tag = \"${IMAGE_TAG}\"" -i \
             "_gitops/gitops/envs/dev/values-${SVC}.yaml"
+
+          # Refresh the registry too: any pipeline can be the first to touch
+          # dev, so none of them may assume another already wrote it.
+          if [[ -z "${AWS_ACCOUNT_ID}" ]]; then
+            echo "::error::AWS_ACCOUNT_ID secret is not set - cannot write global.imageRegistry"
+            exit 1
+          fi
+          yq e ".global.imageRegistry = \"${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com\"" \
+            -i "_gitops/gitops/envs/dev/values-common.yaml"
+
           cd _gitops
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

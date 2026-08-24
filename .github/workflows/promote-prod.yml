@@ -26,6 +26,7 @@ permissions:
   contents: read
 
 env:
+  AWS_REGION: us-east-1
   GITOPS_REPO: ${{ vars.GITOPS_REPO }}
 
 jobs:
@@ -77,6 +78,7 @@ jobs:
         env:
           SVC: ${{ inputs.service }}
           GITOPS_REPO_NAME: ${{ env.GITOPS_REPO }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           PROD_VALUES="_gitops/gitops/envs/prod/values-${SVC}.yaml"
           if [[ ! -f "$PROD_VALUES" ]]; then
@@ -101,6 +103,15 @@ jobs:
           cd _gitops
           git checkout -b "$BRANCH"
           yq e ".image.tag = \"${IMAGE_TAG}\"" -i "${PROD_VALUES}"
+
+          # The registry embeds the account ID, so it is written from the
+          # secret rather than committed. Same contract as the dev pipeline.
+          if [[ -z "${AWS_ACCOUNT_ID}" ]]; then
+            echo "::error::AWS_ACCOUNT_ID secret is not set - cannot write global.imageRegistry"
+            exit 1
+          fi
+          yq e ".global.imageRegistry = \"${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com\"" \
+            -i "gitops/envs/prod/values-common.yaml"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
