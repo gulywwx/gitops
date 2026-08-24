@@ -51,6 +51,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Fully qualified image reference.
+Service values files carry only the bare repository name; the registry lives once
+per environment in values-common.yaml as global.imageRegistry. Joining them here
+keeps the account ID out of every service values file. A repository that already
+contains a registry host is passed through unchanged.
+*/}}
+{{- define "pharma-service.image" -}}
+{{- $repository := .Values.image.repository | required "image.repository is required" -}}
+{{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
+{{- $registry := (.Values.global).imageRegistry -}}
+{{- if and $registry (not (contains "/" $repository)) -}}
+{{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repository $tag -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "pharma-service.serviceAccountName" -}}
