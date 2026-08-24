@@ -2,7 +2,7 @@ replicaCount: 1
 fullnameOverride: manufacturing-service
 image:
   repository: manufacturing-service
-  tag: sha-9791f17
+  tag: sha-674c0c7
   pullPolicy: Always
 service:
   type: ClusterIP
