@@ -54,5 +54,8 @@
   },
   "overrides": {
     "brace-expansion": "^1.1.18"
+  },
+  "optionalDependencies": {
+    "yaml": "^2.9.0"
   }
 }
