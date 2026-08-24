@@ -194,11 +194,18 @@ You can also trigger it by hand: **Actions → Terraform Infrastructure → Run 
 ```bash
 cd infra/envs/dev
 terraform init
-terraform plan  -var="db_password=Password|26" -var="jwt_secret=Password|26" -var="github_org=gulywwx"
-terraform apply -var="db_password=Password|26" -var="jwt_secret=Password|26" -var="github_org=gulywwx"
+
+# jwt_secret must be at least 32 bytes. auth-service signs tokens with
+# HMAC-SHA, and jjwt rejects anything under 256 bits at runtime.
+JWT=$(openssl rand -hex 32)
+
+terraform plan  -var="db_password=Password|26" -var="jwt_secret=$JWT" -var="github_org=gulywwx"
+terraform apply -var="db_password=Password|26" -var="jwt_secret=$JWT" -var="github_org=gulywwx"
 ```
 
 Use the same values you stored in `DEV_DB_PASSWORD` and `DEV_JWT_SECRET`. If they differ, the next CI run will plan a change to the RDS password and the Secrets Manager entries.
+
+> A short `jwt_secret` provisions cleanly and only fails later, at the first login, with `WeakKeyException: The specified key byte array is N bits`. Generate it with `openssl rand -hex 32` and store the same value in the `DEV_JWT_SECRET` GitHub secret.
 
 Expect 15 to 25 minutes: roughly 10 for the EKS control plane, 5 for the node group, 5 for RDS.
 
@@ -275,11 +282,11 @@ cd infra/envs/dev
 terraform init
 terraform destroy \
   -var="db_password=Password|26" \
-  -var="jwt_secret=Password|26" \
+  -var="jwt_secret=$(openssl rand -hex 32)" \
   -var="github_org=gulywwx"
 ```
 
-Type `yes` when prompted.
+Type `yes` when prompted. The `jwt_secret` value is irrelevant on destroy — Terraform only requires the variable to be set — so a throwaway one is fine here.
 
 ### Delete the state bucket
 

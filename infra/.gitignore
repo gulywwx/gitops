@@ -34,3 +34,8 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+
+#python
+.pydevproject
+__pycache__/
+*.pyc

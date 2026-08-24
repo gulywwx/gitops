@@ -249,7 +249,10 @@ resource "aws_iam_policy" "alb_controller_policy" {
           "elasticloadbalancing:ModifyListener",
           "elasticloadbalancing:AddListenerCertificates",
           "elasticloadbalancing:RemoveListenerCertificates",
-          "elasticloadbalancing:ModifyRule"
+          "elasticloadbalancing:ModifyRule",
+          # Required when a second Ingress joins an IngressGroup: the controller
+          # reorders existing listener rules to place more specific paths first.
+          "elasticloadbalancing:SetRulePriorities"
         ]
         Resource = "*"
       }

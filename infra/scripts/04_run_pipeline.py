@@ -88,28 +88,26 @@ print("  Each pipeline: builds → scans → pushes image to ECR → updates git
 print()
 
 GITHUB_ORG     = prompt("GITHUB_ORG",        "GitHub username or org that owns the repos",
-                        "<your-org>", "zenpharma")
-FRONTEND_REPO  = prompt("FRONTEND_REPO",    "GitHub repo name for frontend",
-                        "frontend", "frontend")
-BACKEND_REPO   = prompt("BACKEND_REPO",     "GitHub repo name for backend",
-                        "backend", "backend")
+                        "<your-org>", "gulywwx")
+REPO           = prompt("REPO",              "Repo name (monorepo: frontend, backend and gitops all live here)",
+                        "gitops", "gitops")
 BRANCH         = prompt("BRANCH",           "Branch to build",
                         "develop", "develop")
 
 # Update service catalogue with user-provided repo names
 FRONTEND = [
-    ("pharma-ui",             FRONTEND_REPO, "ci-pharma-ui.yml"),
+    ("pharma-ui",             REPO, "ci-pharma-ui.yml"),
 ]
 
 BACKEND = [
-    ("auth-service",          BACKEND_REPO,  "ci-auth-service.yml"),
-    ("drug-catalog-service",  BACKEND_REPO,  "ci-drug-catalog.yml"),
-    ("inventory-service",     BACKEND_REPO,  "ci-inventory-service.yml"),
-    ("supplier-service",      BACKEND_REPO,  "ci-supplier-service.yml"),
-    ("manufacturing-service", BACKEND_REPO,  "ci-manufacturing-service.yml"),
-    ("notification-service",  BACKEND_REPO,  "ci-notification.yml"),
-    ("qc-service",            BACKEND_REPO,  "ci-qc-service.yml"),
-    ("api-gateway",           BACKEND_REPO,  "ci-api-gateway.yml"),
+    ("auth-service",          REPO,  "ci-auth-service.yml"),
+    ("drug-catalog-service",  REPO,  "ci-drug-catalog.yml"),
+    ("inventory-service",     REPO,  "ci-inventory-service.yml"),
+    ("supplier-service",      REPO,  "ci-supplier-service.yml"),
+    ("manufacturing-service", REPO,  "ci-manufacturing-service.yml"),
+    ("notification-service",  REPO,  "ci-notification.yml"),
+    ("qc-service",            REPO,  "ci-qc-service.yml"),
+    ("api-gateway",           REPO,  "ci-api-gateway.yml"),
 ]
 
 ALL_SERVICES = FRONTEND + BACKEND
