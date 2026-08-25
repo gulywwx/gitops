@@ -83,9 +83,19 @@ def prompt_choice(var_name, label, choices):
     return value
 
 def kubectl_apply_yaml(yaml_str):
-    r = subprocess.run(["kubectl", "apply", "-f", "-"], input=yaml_str, text=True)
+    """Apply a manifest and return the resource name kubectl reports creating."""
+    r = subprocess.run(["kubectl", "apply", "-f", "-"], input=yaml_str,
+                       text=True, capture_output=True)
+    print(r.stdout, end="")
     if r.returncode != 0:
+        print(r.stderr, file=sys.stderr, end="")
         die("kubectl apply failed.")
+    # "application.argoproj.io/pharma-ui-dev configured". The Application is
+    # named by the manifest and does not have to match the service - dev suffixes
+    # them, and drug-catalog-service is declared as catalog-service-dev. Asking
+    # kubectl what it just applied is the only thing that cannot drift.
+    first = r.stdout.strip().splitlines()[0] if r.stdout.strip() else ""
+    return first.split()[0].split("/")[-1] if "/" in first else ""
 
 # ---------------------------------------------------------------------------
 # Service catalogue
@@ -218,9 +228,13 @@ for name, yaml_file in selected:
     with open(yaml_path) as f:
         content = f.read().replace("your-github-username", GITHUB_USERNAME)
 
-    kubectl_apply_yaml(content)
-    log(f"  ArgoCD Application '{name}' applied.")
-    applied.append(name)
+    app_name = kubectl_apply_yaml(content)
+    if not app_name:
+        warn(f"  Could not read the Application name back from kubectl — skipping the wait for {name}.")
+        skipped.append(name)
+        continue
+    log(f"  ArgoCD Application '{app_name}' applied.")
+    applied.append((name, app_name))
 
 # ---------------------------------------------------------------------------
 # Wait for ArgoCD to sync
@@ -246,13 +260,21 @@ try:
         elapsed += POLL_INTERVAL
 
         still_pending = []
-        for name in pending:
+        for name, app_name in pending:
             out, _ = run_cmd(
-                ["kubectl", "get", "application", name,
+                ["kubectl", "get", "application", app_name,
                  "-n", "argocd",
                  "-o", "jsonpath={.status.sync.status}|{.status.health.status}"],
                 capture=True, ok_fail=True,
             )
+            # An Application that is absent returns nothing at all, which is not
+            # the same as one that has not reported yet. Polling on regardless is
+            # how a typo in a name turns into a ten minute silent wait.
+            if not out.strip():
+                warn(f"{name}: Application '{app_name}' not found in argocd — giving up on it.")
+                results[name] = "not found"
+                continue
+
             parts  = out.split("|")
             sync   = parts[0] if parts else "Unknown"
             health = parts[1] if len(parts) > 1 else "Unknown"
@@ -264,8 +286,8 @@ try:
                 results[name] = "Degraded"
                 warn(f"{name}: Degraded — check logs: kubectl logs -n {ENV} deployment/{name}")
             else:
-                info(f"{name}: sync={sync}, health={health}  ({elapsed}s elapsed)")
-                still_pending.append(name)
+                info(f"{name}: sync={sync or 'Unknown'}, health={health}  ({elapsed}s elapsed)")
+                still_pending.append((name, app_name))
 
         pending = still_pending
 
@@ -279,8 +301,8 @@ except KeyboardInterrupt:
 
 if pending:
     warn(f"Timed out after {MAX_WAIT}s. These apps are still syncing:")
-    for name in pending:
-        print(f"    {name}")
+    for name, app_name in pending:
+        print(f"    {name}  ({app_name})")
     print()
     print("  Check with:")
     print("    kubectl get applications -n argocd")
@@ -295,7 +317,7 @@ print("============================================")
 print()
 print(f"  Environment : {ENV}")
 print()
-for name in applied:
+for name, app_name in applied:
     outcome = results.get(name, "still syncing")
     color   = GREEN if outcome == "Synced/Healthy" else YELLOW
     print(f"  {color}{name:<30} {outcome}{NC}")
