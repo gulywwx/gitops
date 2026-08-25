@@ -2,7 +2,7 @@ replicaCount: 1
 fullnameOverride: auth-service
 image:
   repository: auth-service
-  tag: sha-674c0c7
+  tag: sha-b057021
   pullPolicy: Always
 service:
   type: ClusterIP
