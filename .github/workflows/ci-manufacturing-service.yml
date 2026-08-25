@@ -79,8 +79,14 @@ jobs:
           git add .
           git diff --staged --quiet && echo "Already up to date" && exit 0
           git commit -m "ci(dev): update manufacturing-service → ${IMAGE_TAG}"
-          for i in 1 2 3 4 5; do
-            git push && break
-            echo "Push attempt $i failed — rebasing and retrying..."
-            git pull --rebase
+          pushed=false
+          for attempt in 1 2 3 4 5 6 7 8; do
+            if git push; then pushed=true; break; fi
+            echo "Push attempt ${attempt} lost the ref race - rebasing and retrying..."
+            git pull --rebase origin main
+            sleep $(( attempt + (RANDOM % 5) ))
           done
+          if [ "${pushed}" != "true" ]; then
+            echo "::error::Could not push the image tag after 8 attempts."
+            exit 1
+          fi
