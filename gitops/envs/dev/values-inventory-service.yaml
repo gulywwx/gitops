@@ -2,7 +2,7 @@ replicaCount: 1
 fullnameOverride: inventory-service
 image:
   repository: inventory-service
-  tag: sha-449ab65
+  tag: sha-2773490
   pullPolicy: Always
 service:
   type: ClusterIP
