@@ -175,17 +175,22 @@ print()
 run_cmd(["kubectl", "get", "externalsecret", "-n", ENV], ok_fail=True)
 print()
 
-es_out, _ = run_cmd(
-    ["kubectl", "get", "externalsecret", "-n", ENV, "--no-headers"],
+# The printed columns differ between ESO versions - newer builds insert
+# STORETYPE and append LAST SYNC, so a fixed column index reads STATUS and
+# reports a healthy SecretSynced secret as not Ready. Ask for the condition.
+es_names, _ = run_cmd(
+    ["kubectl", "get", "externalsecret", "-n", ENV,
+     "-o", "jsonpath={.items[*].metadata.name}"],
     capture=True, ok_fail=True,
 )
-for line in es_out.splitlines():
-    parts = line.split()
-    if len(parts) >= 5:
-        es_name  = parts[0]
-        es_ready = parts[4]
-        if es_ready != "True":
-            fail(f"ExternalSecret '{es_name}' is not Ready (Ready={es_ready})")
+for es_name in es_names.split():
+    es_ready, _ = run_cmd(
+        ["kubectl", "get", "externalsecret", es_name, "-n", ENV,
+         "-o", 'jsonpath={.status.conditions[?(@.type=="Ready")].status}'],
+        capture=True, ok_fail=True,
+    )
+    if es_ready != "True":
+        fail(f"ExternalSecret '{es_name}' is not Ready (Ready={es_ready or 'Unknown'})")
 
 if ERRORS == 0:
     log("All ExternalSecrets are synced.")
@@ -226,41 +231,84 @@ else:
     warn("  Check: kubectl get ingress -n " + ENV)
 
 # ---------------------------------------------------------------------------
-# Check 5 - HTTP health endpoints
+# Check 5 - Service health
 # ---------------------------------------------------------------------------
-if alb_hostname:
-    print("--------------------------------------------")
-    print("  Check 5 of 5: HTTP Endpoint Health")
-    print("--------------------------------------------")
-    print()
+print("--------------------------------------------")
+print("  Check 5 of 5: Service Health")
+print("--------------------------------------------")
+print()
 
-    health_paths = {
-        "pharma-ui":             "/",
-        "api-gateway":           "/api/actuator/health",
-        "auth-service":          "/api/auth/actuator/health",
-        "drug-catalog-service":  "/api/catalog/actuator/health",
-        "inventory-service":     "/api/inventory/actuator/health",
-        "supplier-service":      "/api/suppliers/actuator/health",
-        "manufacturing-service": "/api/manufacturing/actuator/health",
-    }
+# Actuator is not routed through the gateway, and that is the correct posture -
+# nobody should be able to read /actuator from the internet. Probing it through
+# the ALB returns 404 for the services the gateway routes by prefix and 401 for
+# the ones behind its JWT filter, and neither answer says anything about whether
+# the service is well. So ask each Service directly from inside the cluster,
+# which is the same question the readiness probe asks.
+SERVICE_ENDPOINTS = [
+    ("api-gateway",           8080),
+    ("auth-service",          8081),
+    ("drug-catalog-service",  8082),
+    ("inventory-service",     8083),
+    ("supplier-service",      8084),
+    ("manufacturing-service", 8085),
+    ("qc-service",            8086),
+    ("notification-service",  3000),
+]
 
-    base_url = f"http://{alb_hostname}"
+targets   = " ".join(f"{n}:{p}" for n, p in SERVICE_ENDPOINTS)
+probe_sh  = (
+    f'for s in {targets}; do '
+    'n=${s%%:*}; '
+    'c=$(curl -s -o /dev/null -m 5 -w "%{http_code}" "http://$s/actuator/health"); '
+    'echo "$n $c"; done'
+)
 
-    for service, path in health_paths.items():
-        url = f"{base_url}{path}"
-        try:
-            req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                http_code = resp.status
-        except urllib.error.HTTPError as e:
-            http_code = e.code
-        except Exception:
-            http_code = 0
+info("Probing /actuator/health from inside the cluster...")
+probe_out, probe_rc = run_cmd(
+    ["kubectl", "run", "verify-health-probe", "--rm", "-i", "--restart=Never",
+     "--image=curlimages/curl:8.10.1", "-n", ENV, "--timeout=120s",
+     "--", "sh", "-c", probe_sh],
+    capture=True, ok_fail=True,
+)
 
-        if http_code in (200, 301, 302):
-            log(f"{service}: HTTP {http_code}  <--  {url}")
+# --rm -i can fall back to streaming logs and repeat the output, so the results
+# are collected into a dict rather than counted line by line.
+seen = {}
+for line in probe_out.splitlines():
+    parts = line.split()
+    if len(parts) == 2 and parts[1].isdigit():
+        seen[parts[0]] = parts[1]
+
+if not seen:
+    fail("Could not probe service health - the curl pod produced no output.")
+    if probe_rc != 0:
+        warn("  kubectl run failed. Check that nodes can pull curlimages/curl.")
+else:
+    for service, _ in SERVICE_ENDPOINTS:
+        code = seen.get(service)
+        if code is None:
+            fail(f"{service}: no response from the probe")
+        elif code == "200":
+            log(f"{service}: HTTP {code}  <--  /actuator/health")
         else:
-            fail(f"{service}: HTTP {http_code}  <--  {url}  (expected 200/301/302)")
+            fail(f"{service}: HTTP {code}  <--  /actuator/health  (expected 200)")
+
+# The frontend is the one thing that genuinely has to answer from the internet.
+if alb_hostname:
+    print()
+    url = f"http://{alb_hostname}/"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url), timeout=10) as resp:
+            http_code = resp.status
+    except urllib.error.HTTPError as e:
+        http_code = e.code
+    except Exception:
+        http_code = 0
+
+    if http_code in (200, 301, 302):
+        log(f"pharma-ui: HTTP {http_code}  <--  {url}  (public)")
+    else:
+        fail(f"pharma-ui: HTTP {http_code}  <--  {url}  (expected 200/301/302)")
 
 # ---------------------------------------------------------------------------
 # Summary

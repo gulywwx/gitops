@@ -10,6 +10,7 @@
 # Run from the root of the dpp-assignment3 directory.
 # =============================================================================
 
+import json
 import os
 import subprocess
 import sys
@@ -60,6 +61,38 @@ def prompt(var_name, label, example, default=""):
         die(f"'{label}' is required.")
     log(f"  {var_name} = {value}")
     return value
+
+def approve_pending_deployments(full_repo, run_id):
+    """Approve every environment this run is parked on. True if anything was approved."""
+    out, rc = run_cmd(
+        ["gh", "api", f"repos/{full_repo}/actions/runs/{run_id}/pending_deployments"],
+        capture=True, ok_fail=True,
+    )
+    if rc != 0 or not out.strip():
+        return False
+    try:
+        pending_envs = json.loads(out)
+    except ValueError:
+        return False
+
+    # current_user_can_approve is False when the repo enables "Prevent self
+    # review", or when the token holder is not on the reviewer list. Approving
+    # is impossible then, and a human genuinely has to step in.
+    approvable = [p["environment"]["id"] for p in pending_envs if p.get("current_user_can_approve")]
+    for p in pending_envs:
+        if not p.get("current_user_can_approve"):
+            warn(f"    cannot self-approve '{p['environment']['name']}' - another reviewer must.")
+    if not approvable:
+        return False
+
+    args = ["gh", "api", "-X", "POST",
+            f"repos/{full_repo}/actions/runs/{run_id}/pending_deployments"]
+    for env_id in approvable:
+        args += ["-F", f"environment_ids[]={env_id}"]
+    args += ["-f", "state=approved",
+             "-f", "comment=Approved by 04_run_pipeline.py"]
+    _, rc = run_cmd(args, capture=True, ok_fail=True)
+    return rc == 0
 
 # Service catalogue is built dynamically after collecting user inputs below.
 
@@ -217,6 +250,8 @@ MAX_WAIT      = 60 * 30  # 30 minutes
 pending = list(triggered_runs)
 results = {}
 elapsed = 0
+awaiting_approval = set()
+approval_attempted = set()
 
 try:
     while pending and elapsed < MAX_WAIT:
@@ -243,6 +278,20 @@ try:
                     log(f"{name}: {conclusion.upper()}")
                 else:
                     warn(f"{name}: {conclusion.upper()}")
+            elif status == "waiting":
+                # The Deploy job is gated on the 'dev' GitHub Environment. It is
+                # the job that writes the new image tag into gitops, so a run
+                # parked here has pushed the image but left the manifests stale.
+                # Nothing below can proceed until it is approved.
+                if name not in approval_attempted:
+                    approval_attempted.add(name)
+                    if approve_pending_deployments(full_repo, run_id):
+                        log(f"{name}: deployment approved automatically.")
+                    else:
+                        awaiting_approval.add(name)
+                        warn(f"{name}: WAITING - automatic approval did not succeed.")
+                        warn(f"    Approve: https://github.com/{full_repo}/actions/runs/{run_id}")
+                still_pending.append((name, full_repo, workflow, run_id))
             else:
                 info(f"{name}: {status}  ({elapsed}s elapsed)")
                 still_pending.append((name, full_repo, workflow, run_id))
@@ -258,7 +307,7 @@ except KeyboardInterrupt:
     sys.exit(0)
 
 if pending:
-    warn(f"Timed out after {MAX_WAIT}s. These pipelines are still running:")
+    warn(f"Timed out after {MAX_WAIT}s. These pipelines never finished:")
     for name, full_repo, _, run_id in pending:
         print(f"    {name}: https://github.com/{full_repo}/actions/runs/{run_id}")
 
@@ -276,9 +325,23 @@ for name, conclusion in results.items():
     if conclusion != "success":
         failed.append(name)
 
+# An unfinished run has not pushed its image tag to gitops, so deploying now
+# would sync manifests that still name the previous build. Reporting success
+# here is what turns that into a cluster full of ImagePullBackOff.
+for name, _, _, _ in pending:
+    label = "WAITING FOR APPROVAL" if name in awaiting_approval else "DID NOT FINISH"
+    print(f"  {YELLOW}{name:<30} {label}{NC}")
+    failed.append(name)
+
 if failed:
     print()
-    warn(f"{len(failed)} pipeline(s) failed: {', '.join(failed)}")
+    warn(f"{len(failed)} pipeline(s) did not succeed: {', '.join(failed)}")
+    if awaiting_approval:
+        warn("")
+        warn("Runs sitting in 'waiting' need a deployment approval before they")
+        warn("write image tags into gitops. The 'dev' GitHub Environment has a")
+        warn("required-reviewer rule - approve those runs in the Actions tab,")
+        warn("wait for them to finish, then re-run this step.")
     warn("Fix the failures before running 05_deploy_services.py")
     sys.exit(1)
 
