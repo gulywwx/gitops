@@ -107,7 +107,7 @@ jobs:
 
       - name: SonarCloud Scan
         if: env.SONAR_TOKEN != '' && vars.SONAR_ORG != '' && vars.SONAR_PROJECT_KEY != ''
-        uses: SonarSource/sonarcloud-github-action@v3
+        uses: SonarSource/sonarcloud-github-action@v5
         with:
           projectBaseDir: ${{ inputs.service-dir }}
           args: >
