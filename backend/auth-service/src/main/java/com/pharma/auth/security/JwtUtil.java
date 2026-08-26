@@ -53,7 +53,7 @@ public class JwtUtil {
                 .verifyWith(getSigningKey())
                 .build()
                 .parseSignedClaims(token)
-                .getBody();
+                .getPayload();
     }
 
     public long getExpirationMs() {
