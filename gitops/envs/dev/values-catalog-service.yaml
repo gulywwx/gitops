@@ -4,7 +4,7 @@ replicaCount: 1
 fullnameOverride: drug-catalog-service
 image:
   repository: drug-catalog-service
-  tag: sha-576e7ec
+  tag: sha-07d4853
   pullPolicy: Always
 service:
   type: ClusterIP
