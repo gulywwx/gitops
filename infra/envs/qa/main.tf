@@ -25,7 +25,7 @@ module "eks" {
   env                = local.env
   vpc_id             = module.vpc.vpc_id
   subnet_ids         = module.vpc.private_subnets
-  kubernetes_version = "1.33"
+  kubernetes_version = "1.35"
   instance_types     = ["t3.medium"]
   min_size           = 1
   max_size           = 3
