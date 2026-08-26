@@ -36,9 +36,16 @@ locals {
   # Immutable subject claims are opt-in per repo/org; gulywwx hasn't enabled it yet,
   # so GitHub still mints tokens with the legacy "org/repo" (no @id) sub claim. Both
   # formats are listed so this keeps working whenever gulywwx does opt in.
+
+  # Branch refs the CI role may be assumed from. Must track the `push.branches`
+  # filters in .github/workflows/ci-*.yml, which include 'release/**'.
+  # `release/*` is a wildcard, not a literal — the sub condition below is
+  # StringLike, and GitHub mints one sub per concrete ref (release/1.4 etc).
+  github_oidc_branches = ["main", "develop", "release/*"]
+
   github_oidc_subs = flatten([
     for repo_name, repo_id in var.github_repo_ids : flatten([
-      for branch in ["main", "develop"] : [
+      for branch in local.github_oidc_branches : [
         "repo:${var.github_org}@${var.github_org_id}/${repo_name}@${repo_id}:ref:refs/heads/${branch}",
         "repo:${var.github_org}/${repo_name}:ref:refs/heads/${branch}",
       ]
