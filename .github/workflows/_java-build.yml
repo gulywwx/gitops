@@ -197,7 +197,7 @@ jobs:
 
       # ── AWS & ECR ──────────────────────────────────────────────────────────────
       - name: "🔑 Configure AWS credentials (OIDC)"
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/pharma-dev-github-actions-role
           aws-region: ${{ inputs.aws-region }}
