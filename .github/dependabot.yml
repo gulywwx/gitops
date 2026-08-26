@@ -59,6 +59,10 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "react-dom"
         update-types: ["version-update:semver-major"]
+      # Pinned to eslint 8.x. The config here is .eslintrc.js, which eslint 9
+      # dropped in favour of flat config, and CRA's eslint-config-react-app@7
+      # peer-requires eslint ^8. Any bump breaks `npm run lint`.
+      - dependency-name: "eslint"
 
 
   # Java/Spring Boot service dependencies.
@@ -108,4 +112,9 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # Pinned to eslint 8.x, same as frontend. Config is .eslintrc.js, dropped
+      # by eslint 9 in favour of flat config, and CI calls `eslint --ext`, a flag
+      # eslint 9 removed. See _node-build.yml and _node-pr-check.yml.
+      - dependency-name: "eslint"
 
