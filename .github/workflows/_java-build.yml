@@ -167,7 +167,7 @@ jobs:
 
       - name: Cache OWASP NVD database
         if: false
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.owasp/dependency-check-data
           key: owasp-nvd-${{ runner.os }}-${{ hashFiles(format('{0}/pom.xml', inputs.service-dir)) }}
