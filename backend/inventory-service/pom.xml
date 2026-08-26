@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.2.0</version>
+    <version>4.1.1</version>
   </parent>
   <groupId>com.pharma</groupId>
   <artifactId>inventory-service</artifactId>
@@ -40,9 +40,16 @@
       <artifactId>postgresql</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- Boot 4 moved FlywayAutoConfiguration out of spring-boot-autoconfigure into
+         its own module; flyway-core alone no longer triggers migration on startup.
+         Flyway 10+ also split dialect support out, so postgresql is explicit. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.flywaydb</groupId>
-      <artifactId>flyway-core</artifactId>
+      <artifactId>flyway-database-postgresql</artifactId>
     </dependency>
     <dependency>
       <groupId>io.micrometer</groupId>
