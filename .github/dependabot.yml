@@ -60,3 +60,52 @@ updates:
       - dependency-name: "react-dom"
         update-types: ["version-update:semver-major"]
 
+
+  # Java/Spring Boot service dependencies.
+  # Each service has its own independent pom.xml (no parent aggregator or shared
+  # BOM), so versions drift per service and every directory must be listed here.
+  - package-ecosystem: "maven"
+    directories:
+      - "/backend/api-gateway"
+      - "/backend/auth-service"
+      - "/backend/drug-catalog-service"
+      - "/backend/inventory-service"
+      - "/backend/manufacturing-service"
+      - "/backend/qc-service"
+      - "/backend/supplier-service"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "backend"
+      - "java"
+    groups:
+      # Batch low-risk bumps into one PR per service. Majors stay ungrouped so
+      # each arrives as its own reviewable PR rather than hiding in a batch.
+      minor-and-patch:
+        patterns: ["*"]
+        update-types:
+          - "minor"
+          - "patch"
+
+
+  # notification-service is the one Node service under backend/
+  - package-ecosystem: "npm"
+    directory: "/backend/notification-service"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "backend"
+      - "node"
+    groups:
+      minor-and-patch:
+        patterns: ["*"]
+        update-types:
+          - "minor"
+          - "patch"
+
