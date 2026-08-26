@@ -21,7 +21,14 @@
   <dependencies>
     <dependency>
       <groupId>org.springframework.cloud</groupId>
-      <artifactId>spring-cloud-starter-gateway</artifactId>
+      <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
+    </dependency>
+    <!-- Boot 4 moved WebClientAutoConfiguration out of spring-boot-starter-webflux
+         into its own module. AuthFilter injects WebClient.Builder, so without this
+         the context fails to start even though spring-webflux is on the classpath. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webclient</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>

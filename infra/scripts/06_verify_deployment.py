@@ -122,16 +122,38 @@ if elapsed >= 60:
     warn(f"No pods found in '{ENV}' after 60s.")
     warn("  ArgoCD may not have synced yet. Check: kubectl get applications -n argocd")
 else:
-    info(f"Waiting up to {TIMEOUT_PODS}s for all pods to become Ready...")
-    _, rc = run_cmd(
-        ["kubectl", "wait", "pod", "--all", "-n", ENV,
-         "--for=condition=Ready", f"--timeout={TIMEOUT_PODS}s"],
-        ok_fail=True,
+    # `kubectl wait pod --all` resolves the pod list once, then blocks on those
+    # exact names. An ArgoCD rollout deletes old-generation pods mid-wait, so
+    # the snapshotted names 404 and the command exits non-zero even though every
+    # Deployment converged cleanly. Wait on the workload instead: `rollout
+    # status` is generation-aware and unaffected by pod churn.
+    deploys_out, _ = run_cmd(
+        ["kubectl", "get", "deployments", "-n", ENV,
+         "-o", "jsonpath={.items[*].metadata.name}"],
+        capture=True, ok_fail=True,
     )
-    if rc == 0:
-        log("All pods are Running and Ready.")
+    deployments = deploys_out.split()
+
+    if not deployments:
+        warn(f"No Deployments found in '{ENV}' -- cannot verify rollout convergence.")
     else:
-        fail("One or more pods are not Ready. See pod list below.")
+        info(f"Waiting up to {TIMEOUT_PODS}s for {len(deployments)} deployment(s) to converge...")
+        # One shared budget across all deployments, matching the semantics of the
+        # single --timeout the previous kubectl wait used.
+        deadline = time.monotonic() + TIMEOUT_PODS
+        stalled = []
+        for name in deployments:
+            remaining = max(1, int(deadline - time.monotonic()))
+            _, rc = run_cmd(
+                ["kubectl", "rollout", "status", f"deployment/{name}",
+                 "-n", ENV, f"--timeout={remaining}s"],
+                ok_fail=True,
+            )
+            if rc != 0:
+                stalled.append(name)
+                fail(f"Deployment '{name}' did not converge within the timeout.")
+        if not stalled:
+            log(f"All {len(deployments)} deployments converged; pods are Running and Ready.")
 
 print()
 run_cmd(["kubectl", "get", "pods", "-n", ENV, "-o", "wide"])
