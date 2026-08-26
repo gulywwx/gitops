@@ -2,7 +2,7 @@ replicaCount: 1
 fullnameOverride: pharma-ui
 image:
   repository: pharma-ui
-  tag: sha-6dcac79
+  tag: sha-6cdf4bb
   pullPolicy: Always
 service:
   type: ClusterIP
