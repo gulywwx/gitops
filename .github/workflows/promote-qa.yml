@@ -47,9 +47,11 @@ jobs:
 
       - name: Install yq
         run: |
+          YQ_VERSION=v4.53.6
           wget -qO /usr/local/bin/yq \
-            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
           chmod +x /usr/local/bin/yq
+          yq --version
 
       - name: Validate DEV values file exists
         env:
@@ -77,7 +79,6 @@ jobs:
         env:
           SVC: ${{ inputs.service }}
           GITOPS_REPO_NAME: ${{ env.GITOPS_REPO }}
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           QA_VALUES="_gitops/gitops/envs/qa/values-${SVC}.yaml"
           if [[ ! -f "$QA_VALUES" ]]; then
@@ -96,6 +97,9 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           GITOPS_REPO_NAME: ${{ env.GITOPS_REPO }}
+          # Must be declared on THIS step: `env` does not carry across steps,
+          # and an unset value expands empty and silently trips the guard below.
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           BRANCH="promote/qa/${SVC}/${IMAGE_TAG}"
 

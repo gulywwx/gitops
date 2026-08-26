@@ -14,8 +14,8 @@ ingress:
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/group.name: pharma-qa
-  host: qa.pharma.internal
+    alb.ingress.kubernetes.io/group.name: pharma-prod
+  host: prod.pharma.internal
   path: /
   pathType: Prefix
 resources:
@@ -49,7 +49,7 @@ readinessProbe:
 configmap:
   API_BASE_URL: "/api"
   AUTH_BASE_URL: "/api/auth"
-  ENV: qa
+  ENV: prod
 # Nginx requires writable directories even with readOnlyRootFilesystem: true
 volumeMounts:
   - name: tmp

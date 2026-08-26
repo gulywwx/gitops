@@ -227,9 +227,11 @@ jobs:
 
       - name: Install yq
         run: |
+          YQ_VERSION=v4.53.6
           wget -qO /usr/local/bin/yq \
-            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
           chmod +x /usr/local/bin/yq
+          yq --version
 
       # ECR_REGISTRY is built here rather than passed from docker-build-push.
       # GitHub redacts any job output whose value contains a secret, and the
