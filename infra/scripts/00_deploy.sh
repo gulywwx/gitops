@@ -9,7 +9,7 @@
 #   S3 bucket        -> terraform init      backend must exist before init
 #   terraform apply  -> everything else     cluster, RDS, ECR, IRSA roles
 #   RDS + nodes      -> schema init         psql runs from a pod inside the VPC
-#   ALB controller   -> ArgoCD ingress      no controller, no ALB hostname
+#   ALB controller   -> Gateway + routes    no controller, no ALB address
 #   ESO + IRSA       -> app pods            pods block on a missing Secret
 #   CI pipelines     -> ArgoCD sync         Applications pull tags that must exist
 #
@@ -508,6 +508,8 @@ TF_CLUSTER_NAME=$(tf_out eks_cluster_name)
 VPC_ID=$(tf_out vpc_id)
 ALB_CONTROLLER_ROLE=$(tf_out alb_controller_role_arn)
 ESO_ROLE_ARN=$(tf_out eso_role_arn)
+BASE_DOMAIN=$(tf_out internal_domain)
+ACM_CERTIFICATE_ARN=$(tf_out acm_certificate_arn)
 
 [ -n "$TF_CLUSTER_NAME" ] && CLUSTER_NAME="$TF_CLUSTER_NAME"
 
@@ -544,6 +546,21 @@ fi
 # 03_setup_external_secrets.py rebuilds the ARN from the account and the name.
 ESO_ROLE_NAME="${ESO_ROLE_ARN##*/}"
 
+[ -n "$BASE_DOMAIN" ] || BASE_DOMAIN="pharma.internal"
+
+if [ -z "$ACM_CERTIFICATE_ARN" ]; then
+  ACM_CERTIFICATE_ARN=$(aws acm list-certificates --region "$AWS_REGION" \
+    --query "CertificateSummaryList[?DomainName=='*.${BASE_DOMAIN}'].CertificateArn | [0]" \
+    --output text 2>/dev/null || true)
+  [ "$ACM_CERTIFICATE_ARN" = "None" ] && ACM_CERTIFICATE_ARN=""
+  [ -n "$ACM_CERTIFICATE_ARN" ] && info "ACM certificate found via AWS lookup." || true
+fi
+if [ -z "$ACM_CERTIFICATE_ARN" ]; then
+  warn "No ACM certificate for *.${BASE_DOMAIN} - the Gateway's HTTPS listener"
+  warn "cannot be configured and ${ENV}.${BASE_DOMAIN} will not serve TLS."
+  warn "Import a certificate, or re-run once terraform declares acm_certificate_arn."
+fi
+
 if [ -z "$RDS_ENDPOINT_RAW" ]; then
   RDS_ENDPOINT_RAW=$(aws rds describe-db-instances --region "$AWS_REGION" \
     --query "DBInstances[?contains(DBInstanceIdentifier,'pharma-${ENV}')].Endpoint.Address|[0]" \
@@ -571,6 +588,8 @@ info "VPC            : ${VPC_ID:-<none found>}"
 info "RDS            : ${RDS_ENDPOINT:-<none found>}"
 info "ALB role       : ${ALB_CONTROLLER_ROLE}"
 info "ESO role       : ${ESO_ROLE_NAME}"
+info "Domain         : ${BASE_DOMAIN}"
+info "ACM cert       : ${ACM_CERTIFICATE_ARN:-<none found>}"
 log "Cluster access confirmed."
 
 # All three environments are created, not just the one being deployed. The
@@ -613,6 +632,7 @@ export CLUSTER_NAME AWS_REGION VPC_ID ALB_CONTROLLER_ROLE
 export GITOPS_PATH GITOPS_REPO_URL GITHUB_USERNAME
 export AWS_ACCOUNT_ID="$ACCOUNT_ID"
 export ESO_ROLE_NAME
+export BASE_DOMAIN ACM_CERTIFICATE_ARN
 export GITHUB_ORG="$GH_ORG" REPO="$REPO_NAME" BRANCH
 export RDS_ENDPOINT DB_PASSWORD NAMESPACE="$ENV"
 
@@ -790,12 +810,8 @@ echo "============================================"
 echo "  Pharmacy -- Deployment Summary"
 echo "============================================"
 # ---------------------------------------------------------------------------
-ALB_HOSTNAME=$(kubectl get ingress pharma-ui -n "$ENV" \
-  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
-if [ -z "$ALB_HOSTNAME" ]; then
-  ALB_HOSTNAME=$(kubectl get ingress -n "$ENV" \
-    -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
-fi
+ALB_HOSTNAME=$(kubectl get gateway pharma-gateway -n gateway-system \
+  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
 
 ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null || true)
@@ -807,13 +823,26 @@ echo "  Environment   : ${ENV}"
 echo "  Cluster       : ${CLUSTER_NAME}"
 echo "  Database      : ${RDS_ENDPOINT:-<none>}"
 echo
+echo "  Application   : https://${ENV}.${BASE_DOMAIN}/"
+echo "  ArgoCD UI     : https://argocd.${BASE_DOMAIN}"
 if [ -n "$ALB_HOSTNAME" ]; then
-  echo "  Application   : http://${ALB_HOSTNAME}/"
+  echo "  Gateway ALB   : ${ALB_HOSTNAME}"
+  # The domain is not registered anywhere - it resolves only from /etc/hosts,
+  # and the ALB answers on an IP that changes, so the entry is printed fresh.
+  ALB_IP=$(dig +short "$ALB_HOSTNAME" 2>/dev/null | head -1 || true)
+  echo
+  echo "  Add to /etc/hosts:"
+  if [ -n "$ALB_IP" ]; then
+    echo "    ${ALB_IP}  ${ENV}.${BASE_DOMAIN} argocd.${BASE_DOMAIN}"
+  else
+    echo "    <resolve ${ALB_HOSTNAME} yourself - dig returned nothing yet>  ${ENV}.${BASE_DOMAIN} argocd.${BASE_DOMAIN}"
+  fi
 else
-  echo "  Application   : no ALB hostname yet - the controller may still be"
-  echo "                  provisioning. Check: kubectl get ingress -n ${ENV}"
+  echo "  Gateway ALB   : no address yet - the controller may still be"
+  echo "                  provisioning. Check: kubectl get gateway pharma-gateway -n gateway-system"
 fi
-echo "  ArgoCD UI     : kubectl port-forward svc/argocd-server -n argocd 8080:443"
+echo
+echo "  ArgoCD port-fw: kubectl port-forward svc/argocd-server -n argocd 8080:443"
 echo "                  https://localhost:8080"
 echo "  ArgoCD login  : admin / ${ARGOCD_PASSWORD:-<already rotated - see your notes>}"
 echo

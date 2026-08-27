@@ -1,0 +1,10 @@
+# Referenced by 01_install_prerequisites.py, which until now warned that this
+# file was missing and fell back to --set flags alone.
+#
+# The controller auto-detects the Gateway CRDs and enables this gate on its own,
+# but only when the CRDs are already registered at pod start. Stating it here
+# means a controller that restarts ahead of the CRDs still comes up in Gateway
+# mode rather than silently reverting to Ingress-only.
+controllerConfig:
+  featureGates:
+    ALBGatewayAPI: true

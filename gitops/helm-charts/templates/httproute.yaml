@@ -1,0 +1,30 @@
+{{- if .Values.httpRoute.enabled -}}
+{{- $domain := required "global.baseDomain must be set (see envs/<env>/values-common.yaml)" .Values.global.baseDomain -}}
+{{- $subdomain := required "httpRoute.subdomain must be set when httpRoute.enabled is true" .Values.httpRoute.subdomain -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "pharma-service.fullname" . }}
+  labels:
+    {{- include "pharma-service.labels" . | nindent 4 }}
+spec:
+  hostnames:
+    - {{ printf "%s.%s" $subdomain $domain | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.httpRoute.parentRef.name }}
+      namespace: {{ .Values.httpRoute.parentRef.namespace }}
+      # The :80 listener is left to the catch-all redirect route in
+      # gateway-system. Attaching here as well would out-specify that route on
+      # hostname and serve plaintext instead of bouncing to TLS.
+      sectionName: {{ .Values.httpRoute.parentRef.sectionName }}
+  rules:
+    - matches:
+        - path:
+            type: {{ .Values.httpRoute.matchType }}
+            value: {{ .Values.httpRoute.path | quote }}
+      backendRefs:
+        - name: {{ include "pharma-service.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}

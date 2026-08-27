@@ -25,3 +25,13 @@ output "eso_role_arn" {
   description = "IRSA role ARN for the External Secrets Operator"
   value       = module.iam.eso_role_arn
 }
+
+output "acm_certificate_arn" {
+  description = "Self-signed certificate ARN the shared Gateway terminates TLS with"
+  value       = module.acm.certificate_arn
+}
+
+output "internal_domain" {
+  description = "Base domain the Gateway listener and every HTTPRoute hostname derive from"
+  value       = module.acm.internal_domain
+}

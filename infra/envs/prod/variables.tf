@@ -15,3 +15,9 @@ variable "github_org" {
   type        = string
   default     = "ravdy"
 }
+
+variable "internal_domain" {
+  description = "Base domain served by the shared Gateway. Not registered publicly - reach it by pointing /etc/hosts at the ALB."
+  type        = string
+  default     = "pharma.internal"
+}

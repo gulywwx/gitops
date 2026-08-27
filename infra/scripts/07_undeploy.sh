@@ -5,7 +5,7 @@
 #
 # Terraform does not track what Kubernetes provisions in AWS:
 #
-#   Ingress             -> ALB            VPC delete fails (subnet ENIs)
+#   Gateway / Ingress   -> ALB            VPC delete fails (subnet ENIs)
 #   Service type=LB     -> NLB / CLB      VPC delete fails (subnet ENIs)
 #   PersistentVolume    -> EBS volume     survives, still billed
 #   TargetGroupBinding  -> target group   namespace hangs in Terminating
@@ -60,7 +60,7 @@ kq() { $CLUSTER_UP || return 0; kubectl "$@" 2>/dev/null || true; }
 # Namespaces the stack owns. kube-system is handled separately - it holds the
 # ALB controller but must not itself be deleted.
 APP_NAMESPACES="dev qa prod"
-ALL_NAMESPACES="dev qa prod argocd external-secrets"
+ALL_NAMESPACES="dev qa prod argocd external-secrets gateway-system"
 
 # ---------------------------------------------------------------------------
 # Preflight
@@ -237,16 +237,22 @@ if $CLUSTER_UP; then
 fi
 
 # ---------------------------------------------------------------------------
-step "Step 3 of 12: Delete Ingresses and LoadBalancer Services"
+step "Step 3 of 12: Delete Gateways, HTTPRoutes, Ingresses and LoadBalancer Services"
 # ---------------------------------------------------------------------------
-# Both create an ELB that Terraform cannot see. Ingress -> ALB via the
-# controller; Service type=LoadBalancer -> NLB or classic ELB via the cloud
-# provider. Either one left behind blocks the VPC delete.
+# All of these create an ELB that Terraform cannot see. The shared Gateway ->
+# ALB via the controller; Ingress -> ALB on a cluster provisioned before the
+# Gateway API migration; Service type=LoadBalancer -> NLB or classic ELB via
+# the cloud provider. Any one left behind blocks the VPC delete.
+#
+# Routes go first: the Gateway is what owns the ALB, and deleting it while
+# routes still attach leaves the controller reconciling a half-gone listener.
 if $CLUSTER_UP; then
   for ns in $ALL_NAMESPACES kube-system; do
-    k delete ingress --all -n "$ns" --ignore-not-found --timeout=60s
+    k delete httproute --all -n "$ns" --ignore-not-found --timeout=60s
+    k delete ingress   --all -n "$ns" --ignore-not-found --timeout=60s
   done
-  log "Ingress objects deleted."
+  k delete gateway --all -n gateway-system --ignore-not-found --timeout=120s
+  log "Gateway, HTTPRoute and Ingress objects deleted."
 
   LBSVC=$(kubectl get svc -A -o json 2>/dev/null \
     | python3 -c 'import json,sys;[print(i["metadata"]["namespace"],i["metadata"]["name"]) for i in json.load(sys.stdin)["items"] if i.get("spec",{}).get("type")=="LoadBalancer"]' 2>/dev/null || true)
