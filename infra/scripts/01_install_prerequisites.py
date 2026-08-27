@@ -23,6 +23,11 @@ from string import Template
 # This repo IS the gitops repo, so the repo root is also the default GITOPS_PATH.
 DEFAULT_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Bootstrap assets are resolved from this script's own location rather than from
+# GITOPS_PATH. They are applied imperatively and ArgoCD never sees them, so they
+# do not belong to the GitOps tree and must not follow it if it is relocated.
+BOOTSTRAP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bootstrap")
+
 
 # ---------------------------------------------------------------------------
 # Logging helpers
@@ -211,11 +216,13 @@ run_cmd(["helm", "repo", "update"])
 log("Helm repos updated.")
 
 # ---------------------------------------------------------------------------
-# Step 1 - Gateway API CRDs
+# Step 1 - Upstream Gateway API CRDs
 #
-# These must be registered before the controller starts. It decides whether to
-# run its Gateway reconciler by looking for these CRDs at boot, so installing
-# them afterwards leaves the controller silently ignoring every Gateway.
+# The controller decides whether to run its Gateway reconciler by looking for
+# these CRDs at boot, so they have to exist before the Helm install in step 2.
+# Only the upstream half is installed here - the gateway.k8s.aws CRDs ship in
+# the controller's own chart and are version-matched to it, so pulling those
+# separately would only invite skew.
 # ---------------------------------------------------------------------------
 print()
 print("--------------------------------------------")
@@ -231,18 +238,11 @@ run_cmd(["kubectl", "apply", "--server-side=true", "-f",
          "https://github.com/kubernetes-sigs/gateway-api/releases/download/"
          f"{GATEWAY_API_VERSION}/standard-install.yaml"])
 
-info("Installing the AWS controller's Gateway CRDs...")
-run_cmd(["kubectl", "apply", "--server-side=true", "-f",
-         "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/"
-         "refs/heads/main/config/crd/gateway/gateway-crds.yaml"])
-
 run_cmd(["kubectl", "wait", "--for=condition=Established", "--timeout=120s",
          "crd/gatewayclasses.gateway.networking.k8s.io",
          "crd/gateways.gateway.networking.k8s.io",
-         "crd/httproutes.gateway.networking.k8s.io",
-         "crd/loadbalancerconfigurations.gateway.k8s.aws",
-         "crd/targetgroupconfigurations.gateway.k8s.aws"])
-log("Gateway API CRDs established.")
+         "crd/httproutes.gateway.networking.k8s.io"])
+log("Upstream Gateway API CRDs established.")
 
 # ---------------------------------------------------------------------------
 # Step 2 - AWS Load Balancer Controller
@@ -251,6 +251,11 @@ log("Gateway API CRDs established.")
 # gateway.k8s.aws/alb controller, and provisions one AWS Application Load
 # Balancer per Gateway. Runs in kube-system and uses IRSA (IAM Roles for
 # Service Accounts) to call AWS APIs.
+#
+# The chart's crds/ directory carries the gateway.k8s.aws CRDs, so this install
+# is also what registers LoadBalancerConfiguration and TargetGroupConfiguration.
+# Helm creates those on first install only and never touches them on upgrade,
+# so bumping ALB_CHART_VERSION on a live cluster needs them applied by hand.
 # ---------------------------------------------------------------------------
 print()
 print("--------------------------------------------")
@@ -260,8 +265,11 @@ print("--------------------------------------------")
 # Gateway API support is GA from controller v3.0.0. Pinning matters here in a
 # way it did not before: an unpinned chart that resolves to something older
 # would install a controller with no Gateway reconciler at all.
+#
+# ALBGatewayAPI is not passed as a feature gate because v3.5.0 already defaults
+# it to true (pkg/config/feature_gates.go). The chart has no values schema, so
+# a gate name that drifts would fail silently rather than loudly.
 ALB_CHART_VERSION = "3.5.0"
-ALB_VALUES_FILE = os.path.join(GITOPS_PATH, "k8s/ingress/alb-controller-values.yaml")
 
 alb_cmd = [
     "helm", "upgrade", "--install", "aws-load-balancer-controller",
@@ -277,12 +285,6 @@ alb_cmd = [
     "--wait", "--timeout", "5m",
 ]
 
-if os.path.isfile(ALB_VALUES_FILE):
-    alb_cmd += ["-f", ALB_VALUES_FILE]
-    info(f"Using values file: {ALB_VALUES_FILE}")
-else:
-    warn(f"No values file at {ALB_VALUES_FILE} - installing with --set flags only.")
-
 # Webhook configs orphaned by a failed previous install carry a caBundle from a
 # cert that no longer exists. Clearing them BEFORE the install lets Helm recreate
 # them in lockstep with the cert it is about to generate.
@@ -293,6 +295,11 @@ for wh_type in ["mutatingwebhookconfiguration", "validatingwebhookconfiguration"
 
 run_cmd(alb_cmd)
 log("AWS Load Balancer Controller installed.")
+
+run_cmd(["kubectl", "wait", "--for=condition=Established", "--timeout=120s",
+         "crd/loadbalancerconfigurations.gateway.k8s.aws",
+         "crd/targetgroupconfigurations.gateway.k8s.aws"])
+log("AWS Gateway CRDs established.")
 
 alb_version, _ = run_cmd(
     ["helm", "list", "-n", "kube-system", "--filter", "aws-load-balancer-controller",
@@ -350,7 +357,7 @@ wait_for_alb_webhook()
 # validates LoadBalancerConfiguration and Gateway through that same admission
 # path, and an apply that races it fails with x509 rather than a useful error.
 info("Applying the shared Gateway...")
-GATEWAY_DIR = os.path.join(GITOPS_PATH, "k8s/gateway")
+GATEWAY_DIR = os.path.join(BOOTSTRAP_DIR, "gateway")
 for manifest in ["00-namespace.yaml", "10-gatewayclass.yaml",
                  "20-loadbalancer-config.yaml", "30-gateway.yaml"]:
     apply_rendered(
