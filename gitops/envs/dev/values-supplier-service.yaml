@@ -2,7 +2,7 @@ replicaCount: 1
 fullnameOverride: supplier-service
 image:
   repository: supplier-service
-  tag: sha-723067c
+  tag: sha-b423618
   pullPolicy: Always
 service:
   type: ClusterIP
