@@ -61,6 +61,8 @@ jobs:
       id-token: write        # OIDC — AWS + Cosign keyless
       contents: read         # Checkout
       actions: read
+      security-events: write # Trivy SARIF upload. Must be declared here — a job-level
+                             # block in a reusable workflow replaces, not extends, the caller's.
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
       registry:  ${{ steps.login-ecr.outputs.registry }}
@@ -222,7 +224,7 @@ jobs:
 
       # ── Trivy — image scan ────────────────────────────────────────────────────
       - name: "🛡️ Trivy — image vulnerability scan (${{ inputs.service-name }})"
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.docker-build.outputs.image }}
           format: sarif
@@ -230,6 +232,22 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '0'
           ignore-unfixed: true
+          limit-severities-for-sarif: true
+
+      - name: "📤 Upload Trivy SARIF to code scanning (${{ inputs.service-name }})"
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image-${{ inputs.service-name }}
+
+      - name: "🗄️ Archive Trivy SARIF (${{ inputs.service-name }})"
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-sarif-${{ inputs.service-name }}
+          path: trivy-results.sarif
+          retention-days: 30
 
       # ── Push & Sign ──────────────────────────────────────────────────────────
       - name: "📦 Push image to ECR"
