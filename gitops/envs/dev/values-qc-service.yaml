@@ -2,7 +2,7 @@ replicaCount: 1
 fullnameOverride: qc-service
 image:
   repository: qc-service
-  tag: sha-b8d741d # CI overwrites this on first successful build
+  tag: sha-71386f1 # CI overwrites this on first successful build
   pullPolicy: Always
 service:
   type: ClusterIP
