@@ -6,13 +6,14 @@
 #   1. Kubernetes pods  - all Running and Ready
 #   2. ArgoCD apps      - all Synced and Healthy
 #   3. External Secrets - all SecretSynced
-#   4. Services/Ingress - resources created
-#   5. HTTP endpoints   - health checks via ALB
+#   4. Services/Routes  - resources created and accepted by the Gateway
+#   5. HTTPS endpoints  - health checks via the Gateway's ALB
 #
 # Run from the root of the dpp-assignment3 directory.
 # =============================================================================
 
 import os
+import ssl
 import subprocess
 import sys
 import time
@@ -90,6 +91,9 @@ if ENV not in ("dev", "qa", "prod"):
 
 TIMEOUT_PODS = int(os.environ.get("TIMEOUT_PODS", "300"))
 ARGOCD_NS    = "argocd"
+GATEWAY_NS   = "gateway-system"
+GATEWAY_NAME = "pharma-gateway"
+BASE_DOMAIN  = os.environ.get("BASE_DOMAIN", "pharma.internal")
 
 print()
 print(f"  Environment : {ENV}")
@@ -218,39 +222,74 @@ if ERRORS == 0:
     log("All ExternalSecrets are synced.")
 
 # ---------------------------------------------------------------------------
-# Check 4 - Services and Ingress
+# Check 4 - Services and HTTPRoutes
 # ---------------------------------------------------------------------------
 print("--------------------------------------------")
-print("  Check 4 of 5: Services and Ingress")
+print(f"  Check 4 of 5: Services and HTTPRoutes (namespace: {ENV})")
 print("--------------------------------------------")
 print()
 
 run_cmd(["kubectl", "get", "svc", "-n", ENV])
 print()
-run_cmd(["kubectl", "get", "ingress", "-n", ENV], ok_fail=True)
+run_cmd(["kubectl", "get", "httproute", "-n", ENV], ok_fail=True)
 print()
 
-# ALB hostname is provisioned per-Ingress by the AWS Load Balancer Controller.
-# We read it from the pharma-ui ingress (the group's primary entry point).
-alb_hostname, _ = run_cmd(
-    ["kubectl", "get", "ingress", "pharma-ui", "-n", ENV,
-     "-o", "jsonpath={.status.loadBalancer.ingress[0].hostname}"],
+route_names, _ = run_cmd(
+    ["kubectl", "get", "httproute", "-n", ENV,
+     "-o", "jsonpath={.items[*].metadata.name}"],
     capture=True, ok_fail=True,
 )
+routes = route_names.split()
 
-if not alb_hostname:
-    # Fallback: try any ingress in the namespace
-    alb_hostname, _ = run_cmd(
-        ["kubectl", "get", "ingress", "-n", ENV,
-         "-o", "jsonpath={.items[0].status.loadBalancer.ingress[0].hostname}"],
+if not routes:
+    fail(f"No HTTPRoutes found in '{ENV}' -- nothing routes traffic to these Services.")
+
+# A route can exist and still carry no traffic: the Gateway rejects it when the
+# listener refuses the namespace or the hostname, and when a backendRef points
+# at a Service that is not there. Both leave the object looking healthy in
+# `kubectl get`, so the parent conditions are the only honest signal.
+for route in routes:
+    conds_out, _ = run_cmd(
+        ["kubectl", "get", "httproute", route, "-n", ENV,
+         "-o", 'jsonpath={range .status.parents[*]}{.conditions[?(@.type=="Accepted")].status}'
+               '|{.conditions[?(@.type=="Accepted")].message}'
+               '|{.conditions[?(@.type=="ResolvedRefs")].status}'
+               '|{.conditions[?(@.type=="ResolvedRefs")].message}{"\\n"}{end}'],
         capture=True, ok_fail=True,
     )
+    if not conds_out.strip():
+        fail(f"HTTPRoute '{route}': no parent status -- the Gateway has not seen it.")
+        continue
+    for line in conds_out.splitlines():
+        parts = (line.split("|") + ["", "", "", ""])[:4]
+        accepted, accepted_msg, resolved, resolved_msg = parts
+        if accepted != "True":
+            fail(f"HTTPRoute '{route}': Accepted={accepted or 'Unknown'} -- {accepted_msg or 'no message'}")
+        elif resolved != "True":
+            fail(f"HTTPRoute '{route}': ResolvedRefs={resolved or 'Unknown'} -- {resolved_msg or 'no message'}")
+        else:
+            log(f"HTTPRoute '{route}': Accepted and ResolvedRefs")
+
+print()
+gw_address, _ = run_cmd(
+    ["kubectl", "get", "gateway", GATEWAY_NAME, "-n", GATEWAY_NS,
+     "-o", "jsonpath={.status.addresses[0].value}"],
+    capture=True, ok_fail=True,
+)
+alb_hostname = gw_address
 
 if alb_hostname:
-    log(f"ALB hostname: {alb_hostname}")
+    log(f"Gateway {GATEWAY_NS}/{GATEWAY_NAME} address: {alb_hostname}")
 else:
-    warn("ALB hostname not available yet -- the AWS Load Balancer Controller may still be provisioning.")
-    warn("  Check: kubectl get ingress -n " + ENV)
+    gw_exists, rc = run_cmd(
+        ["kubectl", "get", "gateway", GATEWAY_NAME, "-n", GATEWAY_NS, "--no-headers"],
+        capture=True, ok_fail=True,
+    )
+    if rc != 0 or not gw_exists.strip():
+        fail(f"Gateway '{GATEWAY_NAME}' does not exist in namespace '{GATEWAY_NS}'.")
+    else:
+        warn("Gateway has no address yet -- the AWS Load Balancer Controller may still be provisioning.")
+        warn(f"  Check: kubectl get gateway {GATEWAY_NAME} -n {GATEWAY_NS}")
 
 # ---------------------------------------------------------------------------
 # Check 5 - Service health
@@ -318,9 +357,18 @@ else:
 # The frontend is the one thing that genuinely has to answer from the internet.
 if alb_hostname:
     print()
-    url = f"http://{alb_hostname}/"
+    vhost = f"{ENV}.{BASE_DOMAIN}"
+    url   = f"https://{alb_hostname}/"
+    # The certificate on the listener is self-signed and issued for the internal
+    # domain, which resolves nowhere but a hand-written /etc/hosts. So connect to
+    # the ALB by name, name the vhost in the Host header so the HTTPRoute matches,
+    # and skip verification - it can only ever fail here.
+    unverified = ssl.create_default_context()
+    unverified.check_hostname = False
+    unverified.verify_mode = ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(urllib.request.Request(url), timeout=10) as resp:
+        req = urllib.request.Request(url, headers={"Host": vhost})
+        with urllib.request.urlopen(req, timeout=10, context=unverified) as resp:
             http_code = resp.status
     except urllib.error.HTTPError as e:
         http_code = e.code
@@ -328,9 +376,9 @@ if alb_hostname:
         http_code = 0
 
     if http_code in (200, 301, 302):
-        log(f"pharma-ui: HTTP {http_code}  <--  {url}  (public)")
+        log(f"pharma-ui: HTTP {http_code}  <--  {url}  (Host: {vhost}, TLS unverified)")
     else:
-        fail(f"pharma-ui: HTTP {http_code}  <--  {url}  (expected 200/301/302)")
+        fail(f"pharma-ui: HTTP {http_code}  <--  {url}  (Host: {vhost}, expected 200/301/302)")
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -340,8 +388,10 @@ print("============================================")
 if ERRORS == 0:
     print(f"{GREEN}  ALL CHECKS PASSED{NC}")
     print()
+    print(f"  Application URL : https://{ENV}.{BASE_DOMAIN}/")
     if alb_hostname:
-        print(f"  Application URL : http://{alb_hostname}/")
+        print(f"  Gateway ALB     : {alb_hostname}")
+        print(f"  /etc/hosts      : <ALB IP>  {ENV}.{BASE_DOMAIN} argocd.{BASE_DOMAIN}")
     print("  ArgoCD UI       : https://localhost:8080")
     print("                    (kubectl port-forward svc/argocd-server -n argocd 8080:443)")
 else:
@@ -352,6 +402,8 @@ else:
     print(f"    kubectl logs -n {ENV} deployment/<service-name> --previous")
     print(f"    kubectl describe externalsecret db-credentials -n {ENV}")
     print("    kubectl get applications -n argocd")
+    print(f"    kubectl get httproute -n {ENV} -o yaml")
+    print("    kubectl get gateway pharma-gateway -n gateway-system -o yaml")
 print("============================================")
 print()
 

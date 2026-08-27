@@ -3,9 +3,10 @@
 # Stage 2 - Install Kubernetes Pre-requisites
 #
 # Installs on the EKS cluster (must already exist from Stage 1 Terraform):
-#   1. AWS Load Balancer Controller - exposes services via AWS ALB
-#   2. ArgoCD                       - GitOps CD controller
-#   3. External Secrets Operator    - syncs AWS Secrets Manager -> K8s Secrets
+#   1. Gateway API CRDs             - upstream + the AWS controller's own
+#   2. AWS Load Balancer Controller - turns Gateways into AWS ALBs
+#   3. ArgoCD                       - GitOps CD controller
+#   4. External Secrets Operator    - syncs AWS Secrets Manager -> K8s Secrets
 #
 # Run from anywhere — paths are resolved relative to this script's location.
 # =============================================================================
@@ -16,6 +17,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime
+from string import Template
 
 # Repo root is two levels above this script: infra/scripts/ -> infra/ -> repo root.
 # This repo IS the gitops repo, so the repo root is also the default GITOPS_PATH.
@@ -80,6 +82,26 @@ def prompt(var_name, label, example, default=""):
     return value
 
 # ---------------------------------------------------------------------------
+# apply_rendered: substitute ${PLACEHOLDER} tokens in a manifest, then apply it
+#
+# The Gateway manifests carry two values that only exist after terraform runs -
+# the base domain and the ACM certificate ARN - so they cannot be committed as
+# literal YAML. string.Template is used rather than str.format because the
+# manifests contain YAML braces that format() would try to interpret.
+# ---------------------------------------------------------------------------
+def apply_rendered(path, **substitutions):
+    if not os.path.isfile(path):
+        die(f"Manifest not found: {path}")
+
+    with open(path) as fh:
+        rendered = Template(fh.read()).substitute(**substitutions)
+
+    result = subprocess.run(["kubectl", "apply", "-f", "-"],
+                            input=rendered, text=True)
+    if result.returncode != 0:
+        die(f"Failed to apply {path}")
+
+# ---------------------------------------------------------------------------
 # Verify required tools are installed
 # ---------------------------------------------------------------------------
 print()
@@ -101,12 +123,14 @@ print()
 print("  This script installs AWS Load Balancer Controller, ArgoCD, and")
 print("  External Secrets Operator on your EKS cluster using Helm.")
 print()
-print("  You will be asked for 4 values:")
+print("  You will be asked for 6 values:")
 print("    1. EKS cluster name         - from Terraform outputs or AWS console")
 print("    2. AWS region               - where your cluster is running")
 print("    3. VPC ID                   - VPC where the cluster lives (auto-fetched if blank)")
 print("    4. ALB controller role ARN  - IAM role ARN for the ALB controller")
 print("       (arn:aws:iam::<account-id>:role/<project>-<env>-alb-controller-role)")
+print("    5. Base domain              - terraform output internal_domain")
+print("    6. ACM certificate ARN      - terraform output acm_certificate_arn")
 print()
 
 CLUSTER_NAME        = prompt("CLUSTER_NAME",        "EKS cluster name",
@@ -116,6 +140,10 @@ AWS_REGION          = prompt("AWS_REGION",          "AWS region where the cluste
 ALB_CONTROLLER_ROLE = prompt("ALB_CONTROLLER_ROLE", "IAM role ARN for the AWS Load Balancer Controller",
                              "arn:aws:iam::<aws-account-id>:role/pharma-dev-alb-controller-role",
                              "arn:aws:iam::873135413040:role/pharma-dev-alb-controller-role")
+BASE_DOMAIN         = prompt("BASE_DOMAIN",         "Base domain served by the shared Gateway",
+                             "pharma.internal", "pharma.internal")
+ACM_CERTIFICATE_ARN = prompt("ACM_CERTIFICATE_ARN", "ACM ARN of the self-signed wildcard certificate",
+                             "arn:aws:acm:us-east-1:<aws-account-id>:certificate/<uuid>", "")
 
 default_gitops = os.path.join(DEFAULT_PROJECT_ROOT, "gitops")
 GITOPS_PATH         = prompt("GITOPS_PATH",         "Local path to your gitops repo",
@@ -144,6 +172,8 @@ print(f"  Cluster          : {CLUSTER_NAME}")
 print(f"  Region           : {AWS_REGION}")
 print(f"  VPC ID           : {VPC_ID}")
 print(f"  ALB role ARN     : {ALB_CONTROLLER_ROLE}")
+print(f"  Base domain      : {BASE_DOMAIN}")
+print(f"  Certificate ARN  : {ACM_CERTIFICATE_ARN}")
 print("  ---------------------------------")
 print()
 confirm = input("  Proceed with installation? [Y/n]: ").strip() or "Y"
@@ -181,23 +211,63 @@ run_cmd(["helm", "repo", "update"])
 log("Helm repos updated.")
 
 # ---------------------------------------------------------------------------
-# Step 1 - AWS Load Balancer Controller
+# Step 1 - Gateway API CRDs
 #
-# Watches Ingress resources with ingressClassName: alb and provisions an
-# AWS Application Load Balancer for each IngressGroup. Runs in kube-system
-# and uses IRSA (IAM Roles for Service Accounts) to call AWS APIs.
+# These must be registered before the controller starts. It decides whether to
+# run its Gateway reconciler by looking for these CRDs at boot, so installing
+# them afterwards leaves the controller silently ignoring every Gateway.
 # ---------------------------------------------------------------------------
 print()
 print("--------------------------------------------")
-print("  Step 1 of 3: AWS Load Balancer Controller")
+print("  Step 1 of 4: Gateway API CRDs")
 print("--------------------------------------------")
 
+GATEWAY_API_VERSION = "v1.6.0"
+
+info(f"Installing upstream Gateway API CRDs ({GATEWAY_API_VERSION})...")
+# Server-side apply: the CRD manifests exceed the 256 KB annotation limit that
+# client-side apply uses to record last-applied-configuration.
+run_cmd(["kubectl", "apply", "--server-side=true", "-f",
+         "https://github.com/kubernetes-sigs/gateway-api/releases/download/"
+         f"{GATEWAY_API_VERSION}/standard-install.yaml"])
+
+info("Installing the AWS controller's Gateway CRDs...")
+run_cmd(["kubectl", "apply", "--server-side=true", "-f",
+         "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/"
+         "refs/heads/main/config/crd/gateway/gateway-crds.yaml"])
+
+run_cmd(["kubectl", "wait", "--for=condition=Established", "--timeout=120s",
+         "crd/gatewayclasses.gateway.networking.k8s.io",
+         "crd/gateways.gateway.networking.k8s.io",
+         "crd/httproutes.gateway.networking.k8s.io",
+         "crd/loadbalancerconfigurations.gateway.k8s.aws",
+         "crd/targetgroupconfigurations.gateway.k8s.aws"])
+log("Gateway API CRDs established.")
+
+# ---------------------------------------------------------------------------
+# Step 2 - AWS Load Balancer Controller
+#
+# Watches Gateway and HTTPRoute resources whose GatewayClass names the
+# gateway.k8s.aws/alb controller, and provisions one AWS Application Load
+# Balancer per Gateway. Runs in kube-system and uses IRSA (IAM Roles for
+# Service Accounts) to call AWS APIs.
+# ---------------------------------------------------------------------------
+print()
+print("--------------------------------------------")
+print("  Step 2 of 4: AWS Load Balancer Controller")
+print("--------------------------------------------")
+
+# Gateway API support is GA from controller v3.0.0. Pinning matters here in a
+# way it did not before: an unpinned chart that resolves to something older
+# would install a controller with no Gateway reconciler at all.
+ALB_CHART_VERSION = "3.5.0"
 ALB_VALUES_FILE = os.path.join(GITOPS_PATH, "k8s/ingress/alb-controller-values.yaml")
 
 alb_cmd = [
     "helm", "upgrade", "--install", "aws-load-balancer-controller",
     "eks/aws-load-balancer-controller",
     "--namespace", "kube-system",
+    "--version", ALB_CHART_VERSION,
     "--set", f"clusterName={CLUSTER_NAME}",
     "--set", f"region={AWS_REGION}",
     "--set", f"vpcId={VPC_ID}",
@@ -230,7 +300,6 @@ alb_version, _ = run_cmd(
     capture=True, ok_fail=True,
 )
 log(f"Release: {alb_version or 'aws-load-balancer-controller'}")
-print("  NOTE: ALB hostnames are provisioned per-Ingress after ArgoCD syncs apps.")
 
 # The webhook cert is generated by Helm at render time and written to BOTH the
 # aws-load-balancer-tls Secret and the webhook caBundle. A `helm upgrade` rotates
@@ -277,12 +346,28 @@ def wait_for_alb_webhook(timeout=180):
 
 wait_for_alb_webhook()
 
+# The Gateway objects go in only once the webhook answers: the controller
+# validates LoadBalancerConfiguration and Gateway through that same admission
+# path, and an apply that races it fails with x509 rather than a useful error.
+info("Applying the shared Gateway...")
+GATEWAY_DIR = os.path.join(GITOPS_PATH, "k8s/gateway")
+for manifest in ["00-namespace.yaml", "10-gatewayclass.yaml",
+                 "20-loadbalancer-config.yaml", "30-gateway.yaml"]:
+    apply_rendered(
+        os.path.join(GATEWAY_DIR, manifest),
+        BASE_DOMAIN=BASE_DOMAIN,
+        ACM_CERTIFICATE_ARN=ACM_CERTIFICATE_ARN,
+    )
+log(f"Shared Gateway applied - one ALB serves all of *.{BASE_DOMAIN}.")
+print("  The ALB takes a few minutes to provision. Watch it with:")
+print("    kubectl get gateway pharma-gateway -n gateway-system -w")
+
 # ---------------------------------------------------------------------------
-# Step 2 - ArgoCD
+# Step 3 - ArgoCD
 # ---------------------------------------------------------------------------
 print()
 print("--------------------------------------------")
-print("  Step 2 of 3: ArgoCD")
+print("  Step 3 of 4: ArgoCD")
 print("--------------------------------------------")
 
 run_cmd([
@@ -308,26 +393,23 @@ print("  Username : admin")
 print(f"  Password : {argocd_password}")
 print()
 print("  To access the ArgoCD UI:")
+print(f"    https://argocd.{BASE_DOMAIN}   (after adding the ALB to /etc/hosts)")
 print("    kubectl port-forward svc/argocd-server -n argocd 8080:443")
-print("    Then open: https://localhost:8080")
 print("  ============================================================")
 print()
 
-ingress_file = os.path.join(GITOPS_PATH, "argocd/install/argocd-ingress.yaml")
-if os.path.isfile(ingress_file):
-    run_cmd(["kubectl", "apply", "-f", ingress_file])
-    log("ArgoCD ingress applied.")
-else:
-    warn(f"No ArgoCD ingress manifest at {ingress_file} - skipping.")
-    warn("  ArgoCD will have no ALB. Reach it with: "
-         "kubectl port-forward svc/argocd-server -n argocd 8080:443")
+apply_rendered(
+    os.path.join(GITOPS_PATH, "argocd/install/argocd-httproute.yaml"),
+    BASE_DOMAIN=BASE_DOMAIN,
+)
+log(f"ArgoCD route applied - argocd.{BASE_DOMAIN} attached to the shared Gateway.")
 
 # ---------------------------------------------------------------------------
-# Step 3 - External Secrets Operator
+# Step 4 - External Secrets Operator
 # ---------------------------------------------------------------------------
 print()
 print("--------------------------------------------")
-print("  Step 3 of 3: External Secrets Operator")
+print("  Step 4 of 4: External Secrets Operator")
 print("--------------------------------------------")
 
 run_cmd([
@@ -363,9 +445,18 @@ log("All pre-requisites installed successfully.")
 print()
 print("  Summary:")
 print(f"    ALB controller   : installed in kube-system")
+print(f"    Shared Gateway   : pharma-gateway in gateway-system")
 print(f"    ArgoCD pass      : {argocd_password}")
 print()
-print("  ALB hostnames will appear in 'kubectl get ingress -n <env>'")
-print("  once ArgoCD has synced your applications.")
+print("  One ALB fronts every route. Get its address with:")
+print("    kubectl get gateway pharma-gateway -n gateway-system")
+print()
+print("  Then map it locally, since the domain is not publicly registered:")
+print(f"    ALB=$(kubectl get gateway pharma-gateway -n gateway-system \\")
+print(f"          -o jsonpath='{{.status.addresses[0].value}}')")
+print(f"    echo \"$(dig +short $ALB | head -1) argocd.{BASE_DOMAIN} "
+      f"dev.{BASE_DOMAIN} qa.{BASE_DOMAIN} prod.{BASE_DOMAIN}\" | sudo tee -a /etc/hosts")
+print()
+print("  The certificate is self-signed, so browsers warn once per hostname.")
 print()
 print("Next step: ./scripts/02_bootstrap_argocd.py")

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-system
+  labels:
+    managed-by: 01_install_prerequisites.py
+    app.kubernetes.io/name: gateway-system

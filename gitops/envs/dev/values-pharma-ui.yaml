@@ -8,16 +8,10 @@ service:
   type: ClusterIP
   port: 80
   targetPort: 80
-ingress:
+httpRoute:
   enabled: true
-  className: alb
-  annotations:
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/group.name: pharma-dev
-  host: ""
+  subdomain: dev
   path: /
-  pathType: Prefix
 resources:
   requests:
     cpu: 50m

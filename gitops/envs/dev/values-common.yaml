@@ -4,3 +4,4 @@
 # each service values file carries only the bare repository name.
 global:
   imageRegistry: 603767527880.dkr.ecr.us-east-1.amazonaws.com
+  baseDomain: pharma.internal

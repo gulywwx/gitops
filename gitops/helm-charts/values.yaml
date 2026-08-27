@@ -4,6 +4,7 @@ replicaCount: 1
 # chart still renders standalone.
 global:
   imageRegistry: ""
+  baseDomain: ""
 
 image:
   repository: ""
@@ -41,16 +42,16 @@ service:
   port: 8080
   targetPort: 8080
 
-ingress:
+httpRoute:
   enabled: false
-  className: alb
-  annotations:
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-  host: ""
+  # Joined with global.baseDomain to form the hostname, e.g. dev + pharma.internal.
+  subdomain: ""
+  parentRef:
+    name: pharma-gateway
+    namespace: gateway-system
+    sectionName: https
   path: /
-  pathType: Prefix
-  tls: []
+  matchType: PathPrefix
 
 resources:
   requests:

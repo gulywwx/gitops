@@ -86,3 +86,11 @@ module "secrets_manager" {
   db_host     = module.rds.db_instance_address
   jwt_secret  = var.jwt_secret
 }
+
+module "acm" {
+  source = "../../modules/acm"
+
+  project         = local.project
+  env             = local.env
+  internal_domain = var.internal_domain
+}

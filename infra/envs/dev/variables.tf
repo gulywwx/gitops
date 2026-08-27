@@ -29,3 +29,9 @@ variable "github_repo_ids" {
     "gitops" = "1342817912"
   }
 }
+
+variable "internal_domain" {
+  description = "Base domain served by the shared Gateway. Not registered publicly - reach it by pointing /etc/hosts at the ALB."
+  type        = string
+  default     = "pharma.internal"
+}

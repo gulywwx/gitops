@@ -8,12 +8,10 @@ service:
   type: ClusterIP
   port: 8083
   targetPort: 8083
-ingress:
+httpRoute:
   enabled: false
-  className: alb
-  host: dev.pharma.internal
+  subdomain: dev
   path: /inventory
-  pathType: Prefix
 resources:
   requests:
     cpu: 100m

@@ -8,12 +8,10 @@ service:
   type: ClusterIP
   port: 8086
   targetPort: 8086
-ingress:
+httpRoute:
   enabled: false
-  className: alb
-  host: dev.pharma.internal
+  subdomain: dev
   path: /qc
-  pathType: Prefix
 resources:
   requests:
     cpu: 100m

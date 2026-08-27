@@ -1,0 +1,40 @@
+# ${ACM_CERTIFICATE_ARN} is substituted by 01_install_prerequisites.py from the
+# terraform output of the same name. Gateway API has no vendor-neutral way to
+# hand an ACM ARN to a listener - spec.listeners[].tls.certificateRefs only
+# accepts a Kubernetes Secret, and ACM will not export a private key - so the
+# certificate is attached here instead, through the AWS-specific CRD that the
+# Gateway references via spec.infrastructure.parametersRef.
+apiVersion: gateway.k8s.aws/v1
+kind: LoadBalancerConfiguration
+metadata:
+  name: pharma-lbconfig
+  namespace: gateway-system
+spec:
+  scheme: internet-facing
+  ipAddressType: ipv4
+
+  listenerConfigurations:
+    - protocolPort: HTTP:80
+    - protocolPort: HTTPS:443
+      defaultCertificate: ${ACM_CERTIFICATE_ARN}
+      sslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+
+  defaultTargetGroupConfiguration:
+    name: pharma-default-tg
+
+  tags:
+    Project: pharma
+    ManagedBy: gitops
+---
+# targetType has no targetReference and so applies to every Service backend that
+# attaches to the Gateway. It has to be stated: the controller infers "instance"
+# when the field is absent, which would route through NodePorts and lose the
+# pod-IP targeting the Ingress annotations used before this migration.
+apiVersion: gateway.k8s.aws/v1
+kind: TargetGroupConfiguration
+metadata:
+  name: pharma-default-tg
+  namespace: gateway-system
+spec:
+  defaultConfiguration:
+    targetType: ip

@@ -157,6 +157,9 @@ default_gitops = os.path.join(DEFAULT_PROJECT_ROOT, "gitops")
 GITOPS_PATH     = prompt("GITOPS_PATH", "Local path to your gitops repo",
                          default_gitops, default_gitops)
 
+BASE_DOMAIN     = prompt("BASE_DOMAIN", "Internal base domain served by the Gateway",
+                         "pharma.internal", "pharma.internal")
+
 APPS_DIR = os.path.join(GITOPS_PATH, "argocd/apps", ENV)
 if not os.path.isdir(APPS_DIR):
     die(f"Apps directory not found: {APPS_DIR}")
@@ -329,12 +332,16 @@ if skipped:
 
 print()
 alb_hostname, _ = run_cmd(
-    ["kubectl", "get", "ingress", "pharma-ui", "-n", ENV,
-     "-o", "jsonpath={.status.loadBalancer.ingress[0].hostname}"],
+    ["kubectl", "get", "gateway", "pharma-gateway", "-n", "gateway-system",
+     "-o", "jsonpath={.status.addresses[0].value}"],
     capture=True, ok_fail=True,
 )
+print(f"  Application URL : https://{ENV}.{BASE_DOMAIN}/")
 if alb_hostname:
-    print(f"  Application URL : http://{alb_hostname}/")
+    print(f"  Gateway ALB     : {alb_hostname}")
+    print(f"  /etc/hosts      : <ALB IP>  {ENV}.{BASE_DOMAIN} argocd.{BASE_DOMAIN}")
+else:
+    warn("Gateway 'pharma-gateway' has no address yet - the controller may still be provisioning.")
 
 print()
 print("  ArgoCD UI : kubectl port-forward svc/argocd-server -n argocd 8080:443")
