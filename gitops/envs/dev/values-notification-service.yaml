@@ -2,7 +2,7 @@ replicaCount: 1
 fullnameOverride: notification-service
 image:
   repository: notification-service
-  tag: sha-71386f1
+  tag: sha-06324fe
   pullPolicy: Always
 service:
   type: ClusterIP
